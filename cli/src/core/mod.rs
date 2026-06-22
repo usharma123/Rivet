@@ -5,4 +5,5 @@ pub mod npm;
 pub mod output;
 pub mod paths;
 pub mod registry_client;
+pub mod risk;
 pub mod store;

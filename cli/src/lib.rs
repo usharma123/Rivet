@@ -3,7 +3,7 @@ mod core;
 
 use anyhow::Result;
 use clap::Parser;
-use commands::{add, import, init, install};
+use commands::{add, import, init, inspect, install, run};
 use core::output::OutputMode;
 
 #[derive(Debug, Parser)]
@@ -142,9 +142,13 @@ pub fn run() -> Result<()> {
         Command::Add { package, flags } => add::run(package, flags),
         Command::Install { flags } => install::run(flags),
         Command::Import { spec, flags } => import::run(spec, flags),
-        Command::Inspect { .. }
-        | Command::Run { .. }
-        | Command::Publish { .. }
+        Command::Inspect { target, flags } => inspect::run(target, flags),
+        Command::Run {
+            command,
+            args,
+            flags,
+        } => run::run(command, args, flags),
+        Command::Publish { .. }
         | Command::Revoke { .. }
         | Command::Yank { .. }
         | Command::Eval { .. }

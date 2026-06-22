@@ -85,6 +85,11 @@ impl LocalStore {
         let data = fs::read_to_string(path)?;
         Ok(serde_json::from_str(&data)?)
     }
+
+    pub fn read_command(&self, command: &str) -> Result<StoredCommand> {
+        let data = fs::read_to_string(self.command_json_path(command))?;
+        Ok(serde_json::from_str(&data)?)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
