@@ -48,6 +48,9 @@ func (r *DockerRunner) Audit(ctx context.Context, version registry.VersionRecord
 		return registry.AuditRecord{}, err
 	}
 	defer os.RemoveAll(outDir)
+	if err := os.Chmod(outDir, 0o777); err != nil {
+		return registry.AuditRecord{}, err
+	}
 
 	token := auditToken(version)
 	proxyURL := r.ProxyURL
@@ -89,6 +92,24 @@ func (r *DockerRunner) Audit(ctx context.Context, version registry.VersionRecord
 	}
 	if evidence.Static.ArtifactSize == 0 {
 		evidence.Static.ArtifactSize = version.ArtifactSize
+	}
+	if evidence.Static.SourceRepo == "" {
+		evidence.Static.SourceRepo = version.SourceRepo
+	}
+	if evidence.Static.SourceVisibility == "" || evidence.Static.SourceVisibility == "unknown" {
+		evidence.Static.SourceVisibility = version.SourceVisibility
+	}
+	if version.HasInstallScripts {
+		evidence.Static.HasInstallScripts = true
+		if len(evidence.Static.InstallScripts) == 0 {
+			evidence.Static.InstallScripts = []string{"declared-script"}
+		}
+	}
+	if version.HasNativeBinaries {
+		evidence.Static.HasNativeBinaries = true
+		if len(evidence.Static.NativeBinaries) == 0 {
+			evidence.Static.NativeBinaries = []string{"declared-native-binary"}
+		}
 	}
 	evidence.Sandbox = map[string]string{"runtime": "gvisor/runsc", "network": "rivet-audit-net"}
 	evidence.Agent = map[string]string{"image": r.Image}

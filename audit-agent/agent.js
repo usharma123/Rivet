@@ -6,7 +6,7 @@ const { spawnSync } = require("node:child_process");
 
 const artifactPath = "/artifact/package.tgz";
 const workDir = "/tmp/rivet-audit";
-const packageDir = path.join(workDir, "package");
+let packageDir = path.join(workDir, "package");
 const evidencePath = "/evidence/evidence.json";
 
 async function main() {
@@ -72,6 +72,9 @@ async function main() {
     });
     writeEvidence(evidence);
     return;
+  }
+  if (!fs.existsSync(packageDir)) {
+    packageDir = workDir;
   }
 
   const manifest = readJson(path.join(packageDir, "package.json"));

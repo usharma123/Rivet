@@ -48,6 +48,9 @@ func run() error {
 		return err
 	}
 	packageDir := filepath.Join(workDir, "package")
+	if _, err := os.Stat(packageDir); err != nil {
+		packageDir = workDir
+	}
 	manifest := map[string]any{}
 	if data, err := os.ReadFile(filepath.Join(packageDir, "package.json")); err == nil {
 		_ = json.Unmarshal(data, &manifest)
