@@ -1,4 +1,6 @@
 fn main() {
-    println!("rivet CLI scaffold");
+    if let Err(err) = rivet::run() {
+        eprintln!("error: {err:#}");
+        std::process::exit(1);
+    }
 }
-
