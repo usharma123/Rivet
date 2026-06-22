@@ -1,0 +1,12 @@
+{
+  "name": "rivet-fixture-benign-cli",
+  "version": "0.1.0",
+  "description": "Low-risk CLI fixture for Rivet workspace checks.",
+  "bin": {
+    "rivet-fixture-benign": "./bin/benign.js"
+  },
+  "rivetFixture": {
+    "expectedVerdict": "low",
+    "expectedState": "active"
+  }
+}

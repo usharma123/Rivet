@@ -1,0 +1,15 @@
+{
+  "name": "rivet-fixture-risky-postinstall",
+  "version": "0.1.0",
+  "description": "High-risk fixture with lifecycle script and native binary markers.",
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "bin": {
+    "rivet-fixture-risky": "./bin/risky.js"
+  },
+  "rivetFixture": {
+    "expectedVerdict": "high",
+    "expectedState": "quarantined"
+  }
+}

@@ -1,0 +1,178 @@
+version = 1
+
+[workspace]
+name = "rivet"
+governance_model = "component-operating-model"
+publishing_phase = "design-now-build-later"
+metadata_source = "rivet.workspace.toml"
+
+[public]
+cli_commands = [
+  "init",
+  "add",
+  "install",
+  "import",
+  "inspect",
+  "run",
+  "verify",
+  "publish",
+  "revoke",
+  "yank",
+  "eval",
+  "byok add",
+  "byok list",
+]
+schema_files = [
+  "schemas/event.schema.json",
+  "schemas/rivet-lock.schema.json",
+  "schemas/rivet-manifest.schema.json",
+]
+ci_required_commands = [
+  "make workspace-check",
+  "make docs-check",
+  "make cli-test",
+  "make cli-clippy",
+  "make fmt-check",
+  "make registry-test",
+]
+
+[[release_groups]]
+id = "cli"
+label = "component:cli"
+paths = ["cli/**", "Cargo.toml", "Cargo.lock"]
+changelog_section = "CLI"
+
+[[release_groups]]
+id = "registry"
+label = "component:registry"
+paths = ["registry/**", "docker-compose.yml"]
+changelog_section = "Registry"
+
+[[release_groups]]
+id = "audit"
+label = "component:audit"
+paths = ["audit-agent/**", "registry/cmd/audit-agent/**", "registry/internal/audit/**"]
+changelog_section = "Verified Audit"
+
+[[release_groups]]
+id = "schemas"
+label = "component:schemas"
+paths = ["schemas/**"]
+changelog_section = "Schemas"
+
+[[release_groups]]
+id = "examples"
+label = "component:examples"
+paths = ["examples/**"]
+changelog_section = "Examples"
+
+[[release_groups]]
+id = "fixtures"
+label = "component:fixtures"
+paths = ["fixtures/**"]
+changelog_section = "Fixtures"
+
+[[release_groups]]
+id = "workspace"
+label = "component:workspace"
+paths = [
+  "rivet.workspace.toml",
+  "workspace.snapshot.json",
+  "tools/workspace/**",
+  "docs/adr/**",
+  ".github/**",
+  "Makefile",
+  "README.md",
+]
+changelog_section = "Workspace Governance"
+
+[[components]]
+id = "cli"
+kind = "rust-cli"
+path = "cli"
+owners = ["rivet-core"]
+release_group = "cli"
+public_interfaces = [
+  "rivet command surface",
+  "rivet.toml project manifest behavior",
+  "rivet.lock project lockfile behavior",
+  "local content-addressed store layout",
+]
+validation_commands = ["make cli-test", "make cli-clippy", "make cli-fmt-check"]
+docs = ["README.md", "docs/adr/0004-lockfile-resolver-policy.md"]
+schemas = ["schemas/rivet-manifest.schema.json", "schemas/rivet-lock.schema.json", "schemas/event.schema.json"]
+
+[[components]]
+id = "registry"
+kind = "go-service"
+path = "registry"
+owners = ["rivet-core"]
+release_group = "registry"
+public_interfaces = [
+  "HTTP /v1 package registry API",
+  "Postgres persistence schema",
+  "dev bearer-token mutation auth",
+]
+validation_commands = ["make registry-test", "make registry-fmt-check"]
+docs = ["README.md", "docs/adr/0006-private-registry-precedence.md"]
+schemas = []
+
+[[components]]
+id = "audit-agent"
+kind = "sandbox-agent"
+path = "audit-agent"
+owners = ["rivet-security"]
+release_group = "audit"
+public_interfaces = [
+  "gVisor audit container contract",
+  "signed registry audit evidence shape",
+  "Node and static audit-agent images",
+]
+validation_commands = ["make audit-agent-check"]
+docs = ["README.md", "docs/adr/0005-audit-trust-policy.md"]
+schemas = ["schemas/event.schema.json"]
+
+[[components]]
+id = "schemas"
+kind = "json-schemas"
+path = "schemas"
+owners = ["rivet-core"]
+release_group = "schemas"
+public_interfaces = [
+  "event.schema.json",
+  "rivet-lock.schema.json",
+  "rivet-manifest.schema.json",
+]
+validation_commands = ["make schema-check"]
+docs = ["README.md"]
+schemas = ["schemas/event.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-manifest.schema.json"]
+
+[[components]]
+id = "examples"
+kind = "demo-projects"
+path = "examples"
+owners = ["rivet-devrel"]
+release_group = "examples"
+public_interfaces = [
+  "hello-cli native package demo",
+  "npm prettier import demo",
+  "example command snapshots",
+]
+validation_commands = ["make examples-check"]
+docs = ["README.md", "examples/npm-import-prettier/README.md"]
+schemas = ["schemas/rivet-manifest.schema.json"]
+
+[[components]]
+id = "fixtures"
+kind = "test-fixtures"
+path = "fixtures"
+owners = ["rivet-security"]
+release_group = "fixtures"
+public_interfaces = [
+  "benign npm-compatible package fixture",
+  "risky postinstall/native package fixture",
+  "fixture catalog snapshots",
+]
+validation_commands = ["make fixtures-check"]
+docs = ["fixtures/README.md", "docs/adr/0002-component-boundaries.md"]
+schemas = []

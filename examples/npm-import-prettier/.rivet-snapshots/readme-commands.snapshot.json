@@ -1,0 +1,10 @@
+{
+  "commands": [
+    "rivet import npm:prettier",
+    "rivet inspect prettier",
+    "rivet run prettier --version"
+  ],
+  "example": "npm-import-prettier",
+  "generated_by": "tools/workspace/workspace.py sync",
+  "path": "examples/npm-import-prettier"
+}

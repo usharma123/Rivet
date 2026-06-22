@@ -4,6 +4,8 @@
 !.env.example
 target/
 bin/
+!fixtures/packages/*/bin/
+!fixtures/packages/*/bin/**
 coverage.out
 registry/rivet-registry
 registry/artifacts/
@@ -13,3 +15,4 @@ rivet.lock
 node_modules/
 dist/
 tmp/
+__pycache__/

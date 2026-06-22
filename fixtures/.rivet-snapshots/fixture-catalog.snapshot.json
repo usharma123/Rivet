@@ -1,0 +1,25 @@
+{
+  "fixtures": [
+    {
+      "expected_state": "active",
+      "expected_verdict": "low",
+      "has_bin": true,
+      "name": "rivet-fixture-benign-cli",
+      "path": "fixtures/packages/benign-cli",
+      "scripts": [],
+      "version": "0.1.0"
+    },
+    {
+      "expected_state": "quarantined",
+      "expected_verdict": "high",
+      "has_bin": true,
+      "name": "rivet-fixture-risky-postinstall",
+      "path": "fixtures/packages/risky-postinstall",
+      "scripts": [
+        "postinstall"
+      ],
+      "version": "0.1.0"
+    }
+  ],
+  "generated_by": "tools/workspace/workspace.py sync"
+}

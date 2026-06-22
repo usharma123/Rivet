@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: make workspace-check
+      - run: make docs-check
+
+  product:
+    runs-on: ubuntu-latest
+    needs: workspace
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+      - run: make cli-test
+      - run: make cli-clippy
+      - run: make fmt-check
+      - run: make registry-test

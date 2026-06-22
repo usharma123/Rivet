@@ -1,0 +1,15 @@
+{
+  "example": "hello-cli",
+  "executables": [
+    "hello"
+  ],
+  "generated_by": "tools/workspace/workspace.py sync",
+  "has_publisher": true,
+  "package": {
+    "description": "Example Rivet package",
+    "license": "MIT",
+    "name": "hello-cli",
+    "version": "0.1.0"
+  },
+  "path": "examples/hello-cli"
+}

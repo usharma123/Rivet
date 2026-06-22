@@ -1,0 +1,258 @@
+{
+  "components": [
+    {
+      "docs": [
+        "README.md",
+        "docs/adr/0005-audit-trust-policy.md"
+      ],
+      "id": "audit-agent",
+      "kind": "sandbox-agent",
+      "owners": [
+        "rivet-security"
+      ],
+      "path": "audit-agent",
+      "public_interfaces": [
+        "gVisor audit container contract",
+        "signed registry audit evidence shape",
+        "Node and static audit-agent images"
+      ],
+      "release_group": "audit",
+      "schemas": [
+        "schemas/event.schema.json"
+      ],
+      "validation_commands": [
+        "make audit-agent-check"
+      ]
+    },
+    {
+      "docs": [
+        "README.md",
+        "docs/adr/0004-lockfile-resolver-policy.md"
+      ],
+      "id": "cli",
+      "kind": "rust-cli",
+      "owners": [
+        "rivet-core"
+      ],
+      "path": "cli",
+      "public_interfaces": [
+        "rivet command surface",
+        "rivet.toml project manifest behavior",
+        "rivet.lock project lockfile behavior",
+        "local content-addressed store layout"
+      ],
+      "release_group": "cli",
+      "schemas": [
+        "schemas/rivet-manifest.schema.json",
+        "schemas/rivet-lock.schema.json",
+        "schemas/event.schema.json"
+      ],
+      "validation_commands": [
+        "make cli-test",
+        "make cli-clippy",
+        "make cli-fmt-check"
+      ]
+    },
+    {
+      "docs": [
+        "README.md",
+        "examples/npm-import-prettier/README.md"
+      ],
+      "id": "examples",
+      "kind": "demo-projects",
+      "owners": [
+        "rivet-devrel"
+      ],
+      "path": "examples",
+      "public_interfaces": [
+        "hello-cli native package demo",
+        "npm prettier import demo",
+        "example command snapshots"
+      ],
+      "release_group": "examples",
+      "schemas": [
+        "schemas/rivet-manifest.schema.json"
+      ],
+      "validation_commands": [
+        "make examples-check"
+      ]
+    },
+    {
+      "docs": [
+        "fixtures/README.md",
+        "docs/adr/0002-component-boundaries.md"
+      ],
+      "id": "fixtures",
+      "kind": "test-fixtures",
+      "owners": [
+        "rivet-security"
+      ],
+      "path": "fixtures",
+      "public_interfaces": [
+        "benign npm-compatible package fixture",
+        "risky postinstall/native package fixture",
+        "fixture catalog snapshots"
+      ],
+      "release_group": "fixtures",
+      "schemas": [],
+      "validation_commands": [
+        "make fixtures-check"
+      ]
+    },
+    {
+      "docs": [
+        "README.md",
+        "docs/adr/0006-private-registry-precedence.md"
+      ],
+      "id": "registry",
+      "kind": "go-service",
+      "owners": [
+        "rivet-core"
+      ],
+      "path": "registry",
+      "public_interfaces": [
+        "HTTP /v1 package registry API",
+        "Postgres persistence schema",
+        "dev bearer-token mutation auth"
+      ],
+      "release_group": "registry",
+      "schemas": [],
+      "validation_commands": [
+        "make registry-test",
+        "make registry-fmt-check"
+      ]
+    },
+    {
+      "docs": [
+        "README.md"
+      ],
+      "id": "schemas",
+      "kind": "json-schemas",
+      "owners": [
+        "rivet-core"
+      ],
+      "path": "schemas",
+      "public_interfaces": [
+        "event.schema.json",
+        "rivet-lock.schema.json",
+        "rivet-manifest.schema.json"
+      ],
+      "release_group": "schemas",
+      "schemas": [
+        "schemas/event.schema.json",
+        "schemas/rivet-lock.schema.json",
+        "schemas/rivet-manifest.schema.json"
+      ],
+      "validation_commands": [
+        "make schema-check"
+      ]
+    }
+  ],
+  "generated_by": "tools/workspace/workspace.py sync",
+  "public": {
+    "ci_required_commands": [
+      "make workspace-check",
+      "make docs-check",
+      "make cli-test",
+      "make cli-clippy",
+      "make fmt-check",
+      "make registry-test"
+    ],
+    "cli_commands": [
+      "init",
+      "add",
+      "install",
+      "import",
+      "inspect",
+      "run",
+      "verify",
+      "publish",
+      "revoke",
+      "yank",
+      "eval",
+      "byok add",
+      "byok list"
+    ],
+    "schema_files": [
+      "schemas/event.schema.json",
+      "schemas/rivet-lock.schema.json",
+      "schemas/rivet-manifest.schema.json"
+    ]
+  },
+  "release_groups": [
+    {
+      "changelog_section": "Verified Audit",
+      "id": "audit",
+      "label": "component:audit",
+      "paths": [
+        "audit-agent/**",
+        "registry/cmd/audit-agent/**",
+        "registry/internal/audit/**"
+      ]
+    },
+    {
+      "changelog_section": "CLI",
+      "id": "cli",
+      "label": "component:cli",
+      "paths": [
+        "cli/**",
+        "Cargo.toml",
+        "Cargo.lock"
+      ]
+    },
+    {
+      "changelog_section": "Examples",
+      "id": "examples",
+      "label": "component:examples",
+      "paths": [
+        "examples/**"
+      ]
+    },
+    {
+      "changelog_section": "Fixtures",
+      "id": "fixtures",
+      "label": "component:fixtures",
+      "paths": [
+        "fixtures/**"
+      ]
+    },
+    {
+      "changelog_section": "Registry",
+      "id": "registry",
+      "label": "component:registry",
+      "paths": [
+        "registry/**",
+        "docker-compose.yml"
+      ]
+    },
+    {
+      "changelog_section": "Schemas",
+      "id": "schemas",
+      "label": "component:schemas",
+      "paths": [
+        "schemas/**"
+      ]
+    },
+    {
+      "changelog_section": "Workspace Governance",
+      "id": "workspace",
+      "label": "component:workspace",
+      "paths": [
+        "rivet.workspace.toml",
+        "workspace.snapshot.json",
+        "tools/workspace/**",
+        "docs/adr/**",
+        ".github/**",
+        "Makefile",
+        "README.md"
+      ]
+    }
+  ],
+  "version": 1,
+  "workspace": {
+    "governance_model": "component-operating-model",
+    "metadata_source": "rivet.workspace.toml",
+    "name": "rivet",
+    "publishing_phase": "design-now-build-later"
+  }
+}
