@@ -1,4 +1,6 @@
 pub mod add;
+pub mod byok;
+pub mod eval;
 pub mod import;
 pub mod init;
 pub mod inspect;

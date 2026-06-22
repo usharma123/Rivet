@@ -1,4 +1,5 @@
 pub mod artifact;
+pub mod byok;
 pub mod lockfile;
 pub mod manifest;
 pub mod npm;
