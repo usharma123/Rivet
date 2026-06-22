@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
@@ -207,7 +207,7 @@ fn write_project_lock_if_present(result: &ImportResult) -> Result<()> {
     update_lockfile(&paths.lockfile, &result.package)
 }
 
-pub fn update_lockfile(path: &PathBuf, package: &StoredPackage) -> Result<()> {
+pub fn update_lockfile(path: &Path, package: &StoredPackage) -> Result<()> {
     let mut lockfile = if path.exists() {
         Lockfile::read_from(path)?
     } else {

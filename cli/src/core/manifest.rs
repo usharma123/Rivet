@@ -83,7 +83,7 @@ pub struct ScriptSection {
     pub env: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Permissions {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub filesystem: Vec<String>,
@@ -91,16 +91,6 @@ pub struct Permissions {
     pub network: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env: Vec<String>,
-}
-
-impl Default for Permissions {
-    fn default() -> Self {
-        Self {
-            filesystem: vec![],
-            network: false,
-            env: vec![],
-        }
-    }
 }
 
 #[cfg(test)]
