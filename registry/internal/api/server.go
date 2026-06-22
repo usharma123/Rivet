@@ -94,8 +94,27 @@ func (s *Server) packages(w http.ResponseWriter, r *http.Request) {
 			if !s.authorized(w, r) {
 				return
 			}
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid request body")
+				return
+			}
+			if shouldTriggerAudit(body) {
+				version, err := s.store.GetVersion(r.Context(), name, segments[1])
+				if err == nil {
+					version, err = s.runVerifiedAudit(r.Context(), version)
+				}
+				if err != nil {
+					writeStoreResult(w, nil, err)
+					return
+				}
+				audit, err := s.store.GetLatestAudit(r.Context(), version.Name, version.Version)
+				writeStoreResult(w, audit, err)
+				return
+			}
 			var req registry.AuditRecord
-			if !decodeJSON(w, r.Body, &req) {
+			if err := json.Unmarshal(body, &req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
 				return
 			}
 			req.PackageName = name
@@ -385,4 +404,18 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func shouldTriggerAudit(body []byte) bool {
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return true
+	}
+	var value map[string]json.RawMessage
+	if err := json.Unmarshal(body, &value); err != nil {
+		return false
+	}
+	_, hasSignature := value["signature"]
+	_, hasEvidence := value["evidence"]
+	_, hasVerdict := value["verdict"]
+	return !hasSignature && !hasEvidence && !hasVerdict
 }

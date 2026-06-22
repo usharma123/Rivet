@@ -25,6 +25,16 @@ pub fn run(command: String, args: Vec<String>, flags: CommonFlags) -> Result<()>
     enforce_policy(&package, &flags)?;
 
     let entry = executable_path(&package, &executable);
+    let audit_verdict = package
+        .verified_audit
+        .as_ref()
+        .map(|audit| audit.verdict.as_str())
+        .unwrap_or("unverified");
+    let audit_score = package
+        .verified_audit
+        .as_ref()
+        .map(|audit| audit.risk_score)
+        .unwrap_or(package.risk_score as u16);
     emit_many(
         flags.output_mode(),
         "Rivet Run",
@@ -32,7 +42,16 @@ pub fn run(command: String, args: Vec<String>, flags: CommonFlags) -> Result<()>
             format!("Command: {command}"),
             format!("Package: {}@{}", package.name, package.version),
             format!("State: {}", package.state),
-            format!("Risk: {}", package.risk_score),
+            format!("Artifact size: {} bytes", package.artifact_size),
+            format!(
+                "Publisher: {}",
+                package.publisher.as_deref().unwrap_or("unverified")
+            ),
+            format!("Source registry: {}", package.registry),
+            format!("Verified audit: {audit_verdict} ({audit_score})"),
+            format!("Permissions: {}", executable.permissions),
+            format!("Native binaries: {}", yes_no(package.has_native_binaries)),
+            format!("Install scripts: {}", yes_no(package.has_install_scripts)),
             format!("Executable: {}", executable.entry),
             "Running...".to_string(),
         ],
@@ -79,6 +98,13 @@ fn enforce_policy(package: &StoredPackage, flags: &CommonFlags) -> Result<()> {
                 package.state
             );
         }
+        "quarantined" if !flags.unsafe_allow_risk => {
+            bail!(
+                "package {}@{} is quarantined; use --unsafe-allow-risk to override",
+                package.name,
+                package.version
+            );
+        }
         _ => {}
     }
     let risk = combine_risk(package.risk_score, &package.risk_reasons, &package.name);
@@ -91,6 +117,14 @@ fn enforce_policy(package: &StoredPackage, flags: &CommonFlags) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 fn executable_path(package: &StoredPackage, executable: &StoredExecutable) -> PathBuf {

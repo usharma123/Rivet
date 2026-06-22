@@ -3,7 +3,7 @@ mod core;
 
 use anyhow::Result;
 use clap::Parser;
-use commands::{add, byok, eval, import, init, inspect, install, publish, release, run};
+use commands::{add, byok, eval, import, init, inspect, install, publish, release, run, verify};
 use core::output::OutputMode;
 
 #[derive(Debug, Parser)]
@@ -46,6 +46,13 @@ pub enum Command {
         command: String,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
+        #[command(flatten)]
+        flags: CommonFlags,
+    },
+    Verify {
+        target: String,
+        #[arg(long, default_value = "gvisor")]
+        sandbox: String,
         #[command(flatten)]
         flags: CommonFlags,
     },
@@ -148,6 +155,11 @@ pub fn run() -> Result<()> {
             args,
             flags,
         } => run::run(command, args, flags),
+        Command::Verify {
+            target,
+            sandbox,
+            flags,
+        } => verify::run(target, sandbox, flags),
         Command::Publish { flags } => publish::run(flags),
         Command::Revoke {
             package,

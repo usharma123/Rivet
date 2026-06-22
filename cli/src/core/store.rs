@@ -108,6 +108,22 @@ pub struct StoredPackage {
     pub dependencies: std::collections::BTreeMap<String, String>,
     pub risk_score: u8,
     pub risk_reasons: Vec<String>,
+    #[serde(default)]
+    pub artifact_size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_published_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_repo: Option<String>,
+    #[serde(default)]
+    pub source_visibility: String,
+    #[serde(default)]
+    pub has_native_binaries: bool,
+    #[serde(default)]
+    pub has_install_scripts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_audit: Option<StoredAudit>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -123,6 +139,21 @@ pub struct StoredCommand {
     pub command: String,
     pub package: String,
     pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoredAudit {
+    pub id: Option<String>,
+    pub status: String,
+    pub sandbox_runtime: String,
+    pub agent_image: String,
+    pub verdict: String,
+    pub risk_score: u16,
+    pub reasons: Vec<String>,
+    pub suggested_actions: Vec<String>,
+    pub signature: String,
+    pub cost_cents: u16,
+    pub release_state_applied: Option<String>,
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {

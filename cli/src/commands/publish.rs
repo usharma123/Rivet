@@ -84,6 +84,20 @@ pub fn run(flags: CommonFlags) -> Result<()> {
         source_metadata: json!({"local": {"path": paths.root}}),
         executables,
         risk_score: risk.score as u16,
+        artifact_size: artifact.len() as u64,
+        last_published_by: manifest
+            .publisher
+            .as_ref()
+            .map(|publisher| publisher.identity.clone())
+            .unwrap_or_else(|| "local-dev".to_string()),
+        source_repo: manifest
+            .publisher
+            .as_ref()
+            .map(|publisher| publisher.identity.clone())
+            .unwrap_or_default(),
+        source_visibility: "unknown",
+        has_native_binaries: false,
+        has_install_scripts: !manifest.scripts.is_empty(),
     };
     let response = registry.package_action(
         &manifest.package.name,
@@ -123,6 +137,12 @@ struct PublishRequest {
     source_metadata: serde_json::Value,
     executables: Vec<RegistryExecutable>,
     risk_score: u16,
+    artifact_size: u64,
+    last_published_by: String,
+    source_repo: String,
+    source_visibility: &'static str,
+    has_native_binaries: bool,
+    has_install_scripts: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -43,6 +43,26 @@ impl RegistryClient {
         self.post("/v1/import/npm", request)
     }
 
+    pub fn latest_audit(&self, package: &str, version: &str) -> Result<serde_json::Value> {
+        let package = urlencoding::encode(package);
+        let version = urlencoding::encode(version);
+        self.get(&format!("/v1/packages/{package}/{version}/audits/latest"))
+    }
+
+    pub fn trigger_audit(
+        &self,
+        package: &str,
+        version: &str,
+        sandbox: &str,
+    ) -> Result<serde_json::Value> {
+        let package = urlencoding::encode(package);
+        let version = urlencoding::encode(version);
+        self.post(
+            &format!("/v1/packages/{package}/{version}/audits"),
+            &serde_json::json!({"sandbox": sandbox}),
+        )
+    }
+
     pub fn package_action<T: Serialize>(
         &self,
         package: &str,
@@ -67,6 +87,17 @@ impl RegistryClient {
             .json(request)
             .send()
             .context("registry request")?;
+        let status = response.status();
+        let value: serde_json::Value = response.json().unwrap_or_else(|_| serde_json::json!({}));
+        if !status.is_success() {
+            bail!("registry request failed ({status}): {value}");
+        }
+        Ok(value)
+    }
+
+    pub fn get(&self, path: &str) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self.client.get(url).send().context("registry request")?;
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or_else(|_| serde_json::json!({}));
         if !status.is_success() {

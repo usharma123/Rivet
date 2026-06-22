@@ -144,12 +144,30 @@ pub fn import_npm_package(spec: &str, _flags: &CommonFlags) -> Result<ImportResu
         risk_score: risk_score as u16,
     };
     let registry_response = registry.import_npm(&request)?;
+    let verified_audit =
+        crate::commands::verify::audit_from_value(registry_response.get("latest_verified_audit"));
+    let state = registry_response
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("active")
+        .to_string();
+    let registry_risk = registry_response
+        .get("risk_score")
+        .and_then(serde_json::Value::as_u64)
+        .map(|value| value.min(100) as u8)
+        .unwrap_or(risk_score);
+    let source_repo = source_repo(&package_json.raw);
+    let source_visibility = if source_repo.is_some() {
+        "open".to_string()
+    } else {
+        "unknown".to_string()
+    };
 
     let stored = StoredPackage {
         name: selected.name.clone(),
         version: selected.version.clone(),
         source: "npm-import".to_string(),
-        state: "active".to_string(),
+        state,
         artifact,
         integrity: selected.dist.integrity.clone(),
         registry: registry.base_url().to_string(),
@@ -158,8 +176,16 @@ pub fn import_npm_package(spec: &str, _flags: &CommonFlags) -> Result<ImportResu
         package_json: package_json.raw,
         executables,
         dependencies: package_json.dependencies,
-        risk_score,
+        risk_score: registry_risk,
         risk_reasons,
+        artifact_size: tarball.len() as u64,
+        publisher: Some("npm mirror".to_string()),
+        last_published_by: Some("npm mirror".to_string()),
+        source_repo,
+        source_visibility,
+        has_native_binaries: false,
+        has_install_scripts: !package_json.scripts.is_empty(),
+        verified_audit,
     };
     store.write_package(&stored)?;
     let _ = store.read_package(&stored.name, Some(&stored.version))?;
@@ -238,4 +264,15 @@ fn import_risk(scripts: &std::collections::BTreeMap<String, String>) -> (u8, Vec
         }
     }
     (score.min(100), reasons)
+}
+
+fn source_repo(package_json: &serde_json::Value) -> Option<String> {
+    match package_json.get("repository") {
+        Some(serde_json::Value::String(repo)) => Some(repo.clone()),
+        Some(serde_json::Value::Object(repo)) => repo
+            .get("url")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        _ => None,
+    }
 }

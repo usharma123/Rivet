@@ -31,11 +31,47 @@ fn inspect_package(target: String, package: StoredPackage, flags: CommonFlags) -
         format!("Version: {}", package.version),
         format!("Source: {}", package.source),
         format!("State: {}", package.state),
+        format!("Artifact size: {} bytes", package.artifact_size),
+        format!(
+            "Publisher: {}",
+            package.publisher.as_deref().unwrap_or("unverified")
+        ),
+        format!(
+            "Last published by: {}",
+            package.last_published_by.as_deref().unwrap_or("unknown")
+        ),
+        format!(
+            "Source visibility: {}",
+            if package.source_visibility.is_empty() {
+                "unknown"
+            } else {
+                &package.source_visibility
+            }
+        ),
+        format!("Native binaries: {}", yes_no(package.has_native_binaries)),
+        format!("Install scripts: {}", yes_no(package.has_install_scripts)),
         format!("Risk: {:?} ({})", risk.level, risk.score),
     ];
+    if let Some(audit) = &package.verified_audit {
+        lines.push(format!("Verified audit: {}", audit.status));
+        lines.push(format!("Audit verdict: {}", audit.verdict));
+        lines.push(format!("Audit score: {}", audit.risk_score));
+        lines.push(format!(
+            "Audit signature: {}",
+            if audit.signature.is_empty() {
+                "missing"
+            } else {
+                "present"
+            }
+        ));
+        lines.push(format!("Audit cost: {} cents", audit.cost_cents));
+    } else {
+        lines.push("Verified audit: none".to_string());
+    }
     for executable in &package.executables {
         lines.push(format!("Executable: {}", executable.command));
         lines.push(format!("Entry: {}", executable.entry));
+        lines.push(format!("Permissions: {}", executable.permissions));
     }
     if let Some(confusable) = &risk.confusable_with {
         lines.push(format!("Warning: possible namesquat with {confusable}"));
@@ -56,6 +92,14 @@ fn inspect_package(target: String, package: StoredPackage, flags: CommonFlags) -
             "risk": risk,
         }),
     )
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 fn inspect_unknown(target: String, flags: CommonFlags) -> Result<()> {
