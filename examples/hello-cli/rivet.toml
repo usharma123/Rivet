@@ -1,0 +1,19 @@
+[package]
+name = "hello-cli"
+version = "0.1.0"
+description = "Example Rivet package"
+license = "MIT"
+
+[publisher]
+identity = "github:usharma123/hello-cli"
+provenance = "optional"
+
+[executables.hello]
+entry = "./bin/hello.js"
+summary = "Prints a greeting"
+
+[executables.hello.permissions]
+filesystem = ["read:cwd"]
+network = false
+env = []
+

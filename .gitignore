@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+target/
+bin/
+coverage.out
+registry/rivet-registry
+registry/artifacts/
+.rivet/
+rivet.lock
+node_modules/
+dist/
+tmp/

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rivet.dev/rivet-lock.schema.json",
+  "title": "Rivet Lockfile",
+  "type": "object",
+  "required": ["version", "packages"],
+  "properties": {
+    "version": { "const": 1 },
+    "packages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["version", "source", "artifact", "integrity", "registry", "state"],
+        "properties": {
+          "version": { "type": "string" },
+          "source": { "type": "string" },
+          "artifact": { "type": "string" },
+          "integrity": { "type": "string" },
+          "registry": { "type": "string" },
+          "state": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+
