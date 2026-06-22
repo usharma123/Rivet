@@ -13,6 +13,7 @@ import (
 
 	"github.com/usharma123/rivet/registry/internal/api"
 	"github.com/usharma123/rivet/registry/internal/artifacts"
+	"github.com/usharma123/rivet/registry/internal/audit"
 	"github.com/usharma123/rivet/registry/internal/db"
 )
 
@@ -49,10 +50,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	auditor := audit.NewDockerRunner(
+		env("RIVET_AUDIT_AGENT_IMAGE", "rivet-audit-agent:local"),
+		env("RIVET_AUDIT_PROXY_URL", "http://host.docker.internal:8080/v1/audit-proxy/model"),
+		env("RIVET_AUDIT_SIGNING_KEY", "dev-audit-signing-key"),
+	)
 
 	server := &http.Server{
 		Addr:              env("RIVET_ADDR", ":8080"),
-		Handler:           api.NewServer(store, artifactStore, env("RIVET_REGISTRY_TOKEN", "")),
+		Handler:           api.NewServerWithAuditor(store, artifactStore, env("RIVET_REGISTRY_TOKEN", ""), auditor),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

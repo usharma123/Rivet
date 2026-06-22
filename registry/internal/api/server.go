@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,20 +11,27 @@ import (
 	"strings"
 
 	"github.com/usharma123/rivet/registry/internal/artifacts"
+	"github.com/usharma123/rivet/registry/internal/audit"
 	"github.com/usharma123/rivet/registry/internal/registry"
 )
 
 type Server struct {
 	store     registry.Store
 	artifacts *artifacts.FileStore
+	auditor   audit.Runner
 	token     string
 	mux       *http.ServeMux
 }
 
 func NewServer(store registry.Store, artifactStore *artifacts.FileStore, token string) http.Handler {
+	return NewServerWithAuditor(store, artifactStore, token, nil)
+}
+
+func NewServerWithAuditor(store registry.Store, artifactStore *artifacts.FileStore, token string, auditor audit.Runner) http.Handler {
 	server := &Server{
 		store:     store,
 		artifacts: artifactStore,
+		auditor:   auditor,
 		token:     token,
 		mux:       http.NewServeMux(),
 	}
@@ -38,9 +46,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.health)
 	s.mux.HandleFunc("/v1/packages/", s.packages)
+	s.mux.HandleFunc("/v1/audits/", s.auditByID)
 	s.mux.HandleFunc("/v1/executables/", s.executables)
 	s.mux.HandleFunc("/v1/import/npm", s.importNPM)
 	s.mux.HandleFunc("/v1/evals", s.evals)
+	s.mux.HandleFunc("/v1/audit-proxy/model", s.auditProxyModel)
 	s.mux.HandleFunc("/v1/search", s.search)
 	s.mux.HandleFunc("/v1/artifacts/", s.artifact)
 }
@@ -74,7 +84,30 @@ func (s *Server) packages(w http.ResponseWriter, r *http.Request) {
 		}
 		record := versionFromPublish(name, segments[1], req)
 		version, err := s.store.UpsertVersion(r.Context(), record)
+		if err == nil {
+			version, err = s.runVerifiedAudit(r.Context(), version)
+		}
 		writeStoreResult(w, version, err)
+	case len(segments) == 3 && segments[2] == "audits":
+		switch r.Method {
+		case http.MethodPost:
+			if !s.authorized(w, r) {
+				return
+			}
+			var req registry.AuditRecord
+			if !decodeJSON(w, r.Body, &req) {
+				return
+			}
+			req.PackageName = name
+			req.Version = segments[1]
+			audit, err := s.store.CreateAudit(r.Context(), req)
+			writeStoreResult(w, audit, err)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	case r.Method == http.MethodGet && len(segments) == 4 && segments[2] == "audits" && segments[3] == "latest":
+		audit, err := s.store.GetLatestAudit(r.Context(), name, segments[1])
+		writeStoreResult(w, audit, err)
 	case r.Method == http.MethodPost && len(segments) == 3 && (segments[2] == "revoke" || segments[2] == "yank"):
 		if !s.authorized(w, r) {
 			return
@@ -92,6 +125,20 @@ func (s *Server) packages(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "package route not found")
 	}
+}
+
+func (s *Server) auditByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	segments, err := pathSegments(strings.TrimPrefix(r.URL.Path, "/v1/audits/"))
+	if err != nil || len(segments) != 1 {
+		writeError(w, http.StatusNotFound, "audit path not found")
+		return
+	}
+	audit, err := s.store.GetAudit(r.Context(), segments[0])
+	writeStoreResult(w, audit, err)
 }
 
 func (s *Server) executables(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +175,9 @@ func (s *Server) importNPM(w http.ResponseWriter, r *http.Request) {
 		req.Source = "npm-import"
 	}
 	version, err := s.store.UpsertVersion(r.Context(), versionFromPublish(req.Name, req.Version, req.PublishRequest))
+	if err == nil {
+		version, err = s.runVerifiedAudit(r.Context(), version)
+	}
 	writeStoreResult(w, version, err)
 }
 
@@ -145,6 +195,33 @@ func (s *Server) evals(w http.ResponseWriter, r *http.Request) {
 	}
 	eval, err := s.store.CreateEval(r.Context(), req)
 	writeStoreResult(w, eval, err)
+}
+
+func (s *Server) auditProxyModel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	token := r.Header.Get("X-Rivet-Audit-Token")
+	if token == "" {
+		writeError(w, http.StatusUnauthorized, "audit token is required")
+		return
+	}
+	var req struct {
+		Package  string          `json:"package"`
+		Version  string          `json:"version"`
+		Evidence json.RawMessage `json:"evidence"`
+	}
+	if !decodeJSON(w, r.Body, &req) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"model":             "registry-deterministic-audit-proxy",
+		"verdict":           "low",
+		"risk_score":        12,
+		"reasons":           []string{"registry audit proxy accepted sanitized evidence"},
+		"suggested_actions": []string{"allow_install"},
+	})
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
@@ -203,18 +280,48 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request) bool {
 
 func versionFromPublish(name, version string, req registry.PublishRequest) registry.VersionRecord {
 	return registry.VersionRecord{
-		Name:           name,
-		Version:        version,
-		Source:         defaultString(req.Source, "native"),
-		State:          registry.NormalizeState(req.State),
-		Manifest:       req.Manifest,
-		ArtifactHash:   req.ArtifactHash,
-		ArtifactURL:    req.ArtifactURL,
-		Publisher:      req.Publisher,
-		SourceMetadata: req.SourceMetadata,
-		Executables:    req.Executables,
-		RiskScore:      req.RiskScore,
+		Name:              name,
+		Version:           version,
+		Source:            defaultString(req.Source, "native"),
+		State:             registry.NormalizeState(req.State),
+		Manifest:          req.Manifest,
+		ArtifactHash:      req.ArtifactHash,
+		ArtifactURL:       req.ArtifactURL,
+		Publisher:         req.Publisher,
+		SourceMetadata:    req.SourceMetadata,
+		Executables:       req.Executables,
+		RiskScore:         req.RiskScore,
+		ArtifactSize:      req.ArtifactSize,
+		LastPublishedBy:   req.LastPublishedBy,
+		SourceRepo:        req.SourceRepo,
+		SourceVisibility:  defaultString(req.SourceVisibility, "unknown"),
+		HasNativeBinaries: req.HasNativeBinaries,
+		HasInstallScripts: req.HasInstallScripts,
 	}
+}
+
+func (s *Server) runVerifiedAudit(ctx context.Context, version registry.VersionRecord) (registry.VersionRecord, error) {
+	if s.auditor == nil {
+		return version, nil
+	}
+	artifactPath, err := s.artifacts.Path(version.ArtifactHash)
+	if err != nil {
+		return registry.VersionRecord{}, err
+	}
+	auditRecord, err := s.auditor.Audit(ctx, version, artifactPath)
+	if err != nil {
+		return registry.VersionRecord{}, fmt.Errorf("verified gVisor audit failed closed: %w", err)
+	}
+	if auditRecord.PackageName == "" {
+		auditRecord.PackageName = version.Name
+	}
+	if auditRecord.Version == "" {
+		auditRecord.Version = version.Version
+	}
+	if _, err := s.store.CreateAudit(ctx, auditRecord); err != nil {
+		return registry.VersionRecord{}, err
+	}
+	return s.store.GetVersion(ctx, version.Name, version.Version)
 }
 
 func writeStoreResult(w http.ResponseWriter, value any, err error) {

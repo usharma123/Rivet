@@ -127,9 +127,10 @@ RETURNING id`, packageID, version.Name, version.Source, nullString(version.Publi
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO package_versions (
   id, package_id, version, source, state, manifest, artifact_hash, artifact_url,
-  source_metadata, risk_score, published_at
+  source_metadata, risk_score, artifact_size, last_published_by, source_repo,
+  source_visibility, has_native_binaries, has_install_scripts, published_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
 ON CONFLICT (package_id, version)
 DO UPDATE SET
   source = EXCLUDED.source,
@@ -139,9 +140,18 @@ DO UPDATE SET
   artifact_url = EXCLUDED.artifact_url,
   source_metadata = EXCLUDED.source_metadata,
   risk_score = EXCLUDED.risk_score,
+  artifact_size = EXCLUDED.artifact_size,
+  last_published_by = EXCLUDED.last_published_by,
+  source_repo = EXCLUDED.source_repo,
+  source_visibility = EXCLUDED.source_visibility,
+  has_native_binaries = EXCLUDED.has_native_binaries,
+  has_install_scripts = EXCLUDED.has_install_scripts,
   published_at = package_versions.published_at
 RETURNING id`, versionID, packageID, version.Version, version.Source, string(version.State), version.Manifest,
-		version.ArtifactHash, version.ArtifactURL, version.SourceMetadata, version.RiskScore).
+		version.ArtifactHash, version.ArtifactURL, version.SourceMetadata, version.RiskScore,
+		version.ArtifactSize, nullString(version.LastPublishedBy), nullString(version.SourceRepo),
+		nullString(defaultString(version.SourceVisibility, "unknown")), version.HasNativeBinaries,
+		version.HasInstallScripts).
 		Scan(&versionID)
 	if err != nil {
 		return registry.VersionRecord{}, err
@@ -233,6 +243,134 @@ RETURNING created_at`,
 	return eval, nil
 }
 
+func (s *PostgresStore) CreateAudit(ctx context.Context, audit registry.AuditRecord) (registry.AuditRecord, error) {
+	if audit.ID == "" {
+		audit.ID = newID()
+	}
+	if audit.StartedAt.IsZero() {
+		audit.StartedAt = s.now()
+	}
+	if audit.CostCents == 0 {
+		audit.CostCents = 50
+	}
+	if len(audit.Evidence) == 0 {
+		audit.Evidence = json.RawMessage(`{}`)
+	}
+	if len(audit.Reasons) == 0 {
+		audit.Reasons = json.RawMessage(`[]`)
+	}
+	if len(audit.Suggested) == 0 {
+		audit.Suggested = json.RawMessage(`[]`)
+	}
+	if err := registry.ValidateAudit(audit); err != nil {
+		return registry.AuditRecord{}, err
+	}
+	state := registry.StateForVerdict(audit.Verdict)
+	audit.ReleaseStateApplied = state
+
+	tx, err := s.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return registry.AuditRecord{}, err
+	}
+	defer tx.Rollback()
+
+	var versionID string
+	err = tx.QueryRowContext(ctx, `
+SELECT pv.id
+FROM package_versions pv
+JOIN packages p ON p.id = pv.package_id
+WHERE p.name = $1 AND pv.version = $2`, audit.PackageName, audit.Version).Scan(&versionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return registry.AuditRecord{}, registry.ErrNotFound
+	}
+	if err != nil {
+		return registry.AuditRecord{}, err
+	}
+
+	err = tx.QueryRowContext(ctx, `
+INSERT INTO audits (
+  id, package_version_id, status, sandbox_runtime, agent_image, agent_image_digest,
+  evidence, verdict, risk_score, reasons, suggested_actions, signature, cost_cents,
+  release_state_applied, started_at, completed_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING started_at`,
+		audit.ID, versionID, string(audit.Status), audit.SandboxRuntime, audit.AgentImage,
+		nullString(audit.AgentImageDigest), audit.Evidence, string(audit.Verdict), audit.RiskScore,
+		audit.Reasons, audit.Suggested, audit.Signature, audit.CostCents, string(state),
+		audit.StartedAt, audit.CompletedAt).Scan(&audit.StartedAt)
+	if err != nil {
+		return registry.AuditRecord{}, err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+UPDATE package_versions
+SET state = $1, risk_score = $2, latest_verified_audit_id = $3
+WHERE id = $4`, string(state), audit.RiskScore, audit.ID, versionID)
+	if err != nil {
+		return registry.AuditRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return registry.AuditRecord{}, err
+	}
+	return audit, nil
+}
+
+func (s *PostgresStore) GetAudit(ctx context.Context, auditID string) (registry.AuditRecord, error) {
+	var audit registry.AuditRecord
+	var status, verdict, sandboxRuntime, agentImage, agentImageDigest, signature, releaseState string
+	var evidence, reasons, suggested []byte
+	err := s.conn.QueryRowContext(ctx, `
+SELECT
+  a.id, p.name, pv.version, a.status, a.sandbox_runtime, a.agent_image,
+  COALESCE(a.agent_image_digest, ''), a.evidence, a.verdict, a.risk_score,
+  a.reasons, COALESCE(a.suggested_actions, '[]'::jsonb), a.signature, a.cost_cents,
+  COALESCE(a.release_state_applied, ''), a.started_at, a.completed_at
+FROM audits a
+JOIN package_versions pv ON pv.id = a.package_version_id
+JOIN packages p ON p.id = pv.package_id
+WHERE a.id = $1`, auditID).
+		Scan(&audit.ID, &audit.PackageName, &audit.Version, &status, &sandboxRuntime, &agentImage,
+			&agentImageDigest, &evidence, &verdict, &audit.RiskScore, &reasons, &suggested,
+			&signature, &audit.CostCents, &releaseState, &audit.StartedAt, &audit.CompletedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return registry.AuditRecord{}, registry.ErrNotFound
+	}
+	if err != nil {
+		return registry.AuditRecord{}, err
+	}
+	audit.Status = registry.AuditStatus(status)
+	audit.SandboxRuntime = sandboxRuntime
+	audit.AgentImage = agentImage
+	audit.AgentImageDigest = agentImageDigest
+	audit.Evidence = json.RawMessage(evidence)
+	audit.Verdict = registry.AuditVerdict(verdict)
+	audit.Reasons = json.RawMessage(reasons)
+	audit.Suggested = json.RawMessage(suggested)
+	audit.Signature = signature
+	audit.ReleaseStateApplied = registry.ReleaseState(releaseState)
+	return audit, nil
+}
+
+func (s *PostgresStore) GetLatestAudit(ctx context.Context, name, version string) (registry.AuditRecord, error) {
+	var auditID string
+	err := s.conn.QueryRowContext(ctx, `
+SELECT a.id
+FROM audits a
+JOIN package_versions pv ON pv.id = a.package_version_id
+JOIN packages p ON p.id = pv.package_id
+WHERE p.name = $1 AND pv.version = $2
+ORDER BY a.started_at DESC
+LIMIT 1`, name, version).Scan(&auditID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return registry.AuditRecord{}, registry.ErrNotFound
+	}
+	if err != nil {
+		return registry.AuditRecord{}, err
+	}
+	return s.GetAudit(ctx, auditID)
+}
+
 func (s *PostgresStore) listVersions(ctx context.Context, name string) ([]registry.VersionRecord, error) {
 	rows, err := s.conn.QueryContext(ctx, `
 SELECT pv.version
@@ -268,14 +406,20 @@ func (s *PostgresStore) getVersion(ctx context.Context, name, version string) (r
 SELECT
   p.name, pv.version, pv.source, pv.state, pv.manifest, pv.artifact_hash, pv.artifact_url,
   COALESCE(p.publisher, ''), COALESCE(pv.source_metadata, '{}'::jsonb), pv.published_at,
-  pv.revoked_at, COALESCE(pv.revoke_reason, ''), COALESCE(pv.replacement_version, ''), pv.risk_score
+  pv.revoked_at, COALESCE(pv.revoke_reason, ''), COALESCE(pv.replacement_version, ''), pv.risk_score,
+  COALESCE(pv.artifact_size, 0), COALESCE(pv.download_count, 0), COALESCE(pv.last_published_by, ''),
+  COALESCE(pv.source_repo, ''), COALESCE(pv.source_visibility, 'unknown'),
+  COALESCE(pv.has_native_binaries, false), COALESCE(pv.has_install_scripts, false),
+  COALESCE(pv.latest_verified_audit_id, '')
 FROM package_versions pv
 JOIN packages p ON p.id = pv.package_id
 WHERE p.name = $1 AND pv.version = $2`, name, version).
 		Scan(&record.Name, &record.Version, &record.Source, &state, &record.Manifest,
 			&record.ArtifactHash, &record.ArtifactURL, &record.Publisher, &sourceMetadata,
 			&record.PublishedAt, &record.RevokedAt, &record.RevokeReason, &record.ReplacementVersion,
-			&record.RiskScore)
+			&record.RiskScore, &record.ArtifactSize, &record.DownloadCount, &record.LastPublishedBy,
+			&record.SourceRepo, &record.SourceVisibility, &record.HasNativeBinaries,
+			&record.HasInstallScripts, &record.LatestAuditID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return registry.VersionRecord{}, registry.ErrNotFound
 	}
@@ -284,6 +428,12 @@ WHERE p.name = $1 AND pv.version = $2`, name, version).
 	}
 	record.State = registry.ReleaseState(state)
 	record.SourceMetadata = json.RawMessage(sourceMetadata)
+	if record.LatestAuditID != "" {
+		audit, err := s.GetAudit(ctx, record.LatestAuditID)
+		if err == nil {
+			record.LatestAudit = &audit
+		}
+	}
 
 	executables, err := s.executables(ctx, name, version)
 	if err != nil {
@@ -322,4 +472,11 @@ ORDER BY e.command`, name, version)
 
 func nullString(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

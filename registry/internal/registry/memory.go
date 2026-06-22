@@ -13,6 +13,7 @@ type MemoryStore struct {
 	packages map[string]PackageRecord
 	versions map[string]VersionRecord
 	evals    []EvalRecord
+	audits   map[string]AuditRecord
 	now      func() time.Time
 }
 
@@ -20,6 +21,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		packages: map[string]PackageRecord{},
 		versions: map[string]VersionRecord{},
+		audits:   map[string]AuditRecord{},
 		now:      time.Now,
 	}
 }
@@ -135,6 +137,63 @@ func (s *MemoryStore) CreateEval(_ context.Context, eval EvalRecord) (EvalRecord
 	}
 	s.evals = append(s.evals, eval)
 	return eval, nil
+}
+
+func (s *MemoryStore) CreateAudit(_ context.Context, audit AuditRecord) (AuditRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if audit.ID == "" {
+		audit.ID = "audit-" + key(audit.PackageName, audit.Version)
+	}
+	if audit.StartedAt.IsZero() {
+		audit.StartedAt = s.now()
+	}
+	if audit.CostCents == 0 {
+		audit.CostCents = 50
+	}
+	if err := ValidateAudit(audit); err != nil {
+		return AuditRecord{}, err
+	}
+	record, ok := s.versions[key(audit.PackageName, audit.Version)]
+	if !ok {
+		return AuditRecord{}, ErrNotFound
+	}
+	state := StateForVerdict(audit.Verdict)
+	audit.ReleaseStateApplied = state
+	record.State = state
+	record.RiskScore = audit.RiskScore
+	record.LatestAuditID = audit.ID
+	record.LatestAudit = &audit
+	s.versions[key(audit.PackageName, audit.Version)] = record
+	s.audits[audit.ID] = audit
+	return audit, nil
+}
+
+func (s *MemoryStore) GetAudit(_ context.Context, auditID string) (AuditRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	audit, ok := s.audits[auditID]
+	if !ok {
+		return AuditRecord{}, ErrNotFound
+	}
+	return audit, nil
+}
+
+func (s *MemoryStore) GetLatestAudit(_ context.Context, name, version string) (AuditRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.versions[key(name, version)]
+	if !ok {
+		return AuditRecord{}, ErrNotFound
+	}
+	if record.LatestAuditID == "" {
+		return AuditRecord{}, ErrNotFound
+	}
+	audit, ok := s.audits[record.LatestAuditID]
+	if !ok {
+		return AuditRecord{}, ErrNotFound
+	}
+	return audit, nil
 }
 
 func key(name, version string) string {

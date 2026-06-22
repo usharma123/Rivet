@@ -5,7 +5,10 @@ import (
 	"time"
 )
 
-const PublisherRevokeWindow = 100 * 24 * time.Hour
+const (
+	PublisherRevokeDownloadThreshold = 100
+	PublisherRevokeWindow            = 5 * time.Hour
+)
 
 func ValidateReleaseState(state ReleaseState) error {
 	switch state {
@@ -27,8 +30,7 @@ func AllowStateChange(current VersionRecord, target ReleaseState, req StateChang
 		return fmt.Errorf("%w: reason is required", ErrInvalidRequest)
 	}
 
-	age := now.Sub(current.PublishedAt)
-	if age <= PublisherRevokeWindow {
+	if PublisherSelfRevokeAllowed(current, now) {
 		return nil
 	}
 
@@ -38,5 +40,51 @@ func AllowStateChange(current VersionRecord, target ReleaseState, req StateChang
 	if target == StateRevoked && req.SecurityEvidence {
 		return nil
 	}
-	return fmt.Errorf("%w: release is older than 100 days", ErrPolicy)
+	return fmt.Errorf("%w: release is older than 5 hours and has at least 100 downloads", ErrPolicy)
+}
+
+func PublisherSelfRevokeAllowed(current VersionRecord, now time.Time) bool {
+	age := now.Sub(current.PublishedAt)
+	return current.DownloadCount < PublisherRevokeDownloadThreshold || age <= PublisherRevokeWindow
+}
+
+func StateForVerdict(verdict AuditVerdict) ReleaseState {
+	switch verdict {
+	case VerdictLow:
+		return StateActive
+	case VerdictMedium:
+		return StateWarned
+	case VerdictHigh:
+		return StateQuarantined
+	case VerdictCritical:
+		return StateBlocked
+	default:
+		return StateQuarantined
+	}
+}
+
+func ValidateAudit(audit AuditRecord) error {
+	switch audit.Status {
+	case AuditPending, AuditRunning, AuditPassed, AuditFailed:
+	default:
+		return fmt.Errorf("%w: unknown audit status %q", ErrInvalidRequest, audit.Status)
+	}
+	switch audit.Verdict {
+	case VerdictLow, VerdictMedium, VerdictHigh, VerdictCritical:
+	default:
+		return fmt.Errorf("%w: unknown audit verdict %q", ErrInvalidRequest, audit.Verdict)
+	}
+	if audit.PackageName == "" || audit.Version == "" {
+		return fmt.Errorf("%w: package and version are required", ErrInvalidRequest)
+	}
+	if audit.SandboxRuntime != "gvisor/runsc" {
+		return fmt.Errorf("%w: sandbox runtime must be gvisor/runsc", ErrInvalidRequest)
+	}
+	if audit.Signature == "" {
+		return fmt.Errorf("%w: registry audit signature is required", ErrInvalidRequest)
+	}
+	if audit.CostCents == 0 {
+		audit.CostCents = 50
+	}
+	return nil
 }

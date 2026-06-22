@@ -49,6 +49,15 @@ type VersionRecord struct {
 	ReplacementVersion string          `json:"replacement_version,omitempty"`
 	Executables        []Executable    `json:"executables,omitempty"`
 	RiskScore          int             `json:"risk_score"`
+	ArtifactSize       int64           `json:"artifact_size"`
+	DownloadCount      int64           `json:"download_count"`
+	LastPublishedBy    string          `json:"last_published_by,omitempty"`
+	SourceRepo         string          `json:"source_repo,omitempty"`
+	SourceVisibility   string          `json:"source_visibility,omitempty"`
+	HasNativeBinaries  bool            `json:"has_native_binaries"`
+	HasInstallScripts  bool            `json:"has_install_scripts"`
+	LatestAuditID      string          `json:"latest_verified_audit_id,omitempty"`
+	LatestAudit        *AuditRecord    `json:"latest_verified_audit,omitempty"`
 }
 
 type Executable struct {
@@ -73,16 +82,60 @@ type EvalRecord struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
+type AuditStatus string
+
+const (
+	AuditPending AuditStatus = "pending"
+	AuditRunning AuditStatus = "running"
+	AuditPassed  AuditStatus = "passed"
+	AuditFailed  AuditStatus = "failed"
+)
+
+type AuditVerdict string
+
+const (
+	VerdictLow      AuditVerdict = "low"
+	VerdictMedium   AuditVerdict = "medium"
+	VerdictHigh     AuditVerdict = "high"
+	VerdictCritical AuditVerdict = "critical"
+)
+
+type AuditRecord struct {
+	ID                  string          `json:"id,omitempty"`
+	PackageName         string          `json:"package"`
+	Version             string          `json:"version"`
+	Status              AuditStatus     `json:"status"`
+	SandboxRuntime      string          `json:"sandbox_runtime"`
+	AgentImage          string          `json:"agent_image"`
+	AgentImageDigest    string          `json:"agent_image_digest,omitempty"`
+	Evidence            json.RawMessage `json:"evidence"`
+	Verdict             AuditVerdict    `json:"verdict"`
+	RiskScore           int             `json:"risk_score"`
+	Reasons             json.RawMessage `json:"reasons"`
+	Suggested           json.RawMessage `json:"suggested_actions,omitempty"`
+	Signature           string          `json:"signature"`
+	CostCents           int             `json:"cost_cents"`
+	StartedAt           time.Time       `json:"started_at"`
+	CompletedAt         *time.Time      `json:"completed_at,omitempty"`
+	ReleaseStateApplied ReleaseState    `json:"release_state_applied,omitempty"`
+}
+
 type PublishRequest struct {
-	Source         string          `json:"source"`
-	Publisher      string          `json:"publisher,omitempty"`
-	State          ReleaseState    `json:"state,omitempty"`
-	Manifest       json.RawMessage `json:"manifest"`
-	ArtifactHash   string          `json:"artifact_hash"`
-	ArtifactURL    string          `json:"artifact_url,omitempty"`
-	SourceMetadata json.RawMessage `json:"source_metadata,omitempty"`
-	Executables    []Executable    `json:"executables,omitempty"`
-	RiskScore      int             `json:"risk_score"`
+	Source            string          `json:"source"`
+	Publisher         string          `json:"publisher,omitempty"`
+	State             ReleaseState    `json:"state,omitempty"`
+	Manifest          json.RawMessage `json:"manifest"`
+	ArtifactHash      string          `json:"artifact_hash"`
+	ArtifactURL       string          `json:"artifact_url,omitempty"`
+	SourceMetadata    json.RawMessage `json:"source_metadata,omitempty"`
+	Executables       []Executable    `json:"executables,omitempty"`
+	RiskScore         int             `json:"risk_score"`
+	ArtifactSize      int64           `json:"artifact_size"`
+	LastPublishedBy   string          `json:"last_published_by,omitempty"`
+	SourceRepo        string          `json:"source_repo,omitempty"`
+	SourceVisibility  string          `json:"source_visibility,omitempty"`
+	HasNativeBinaries bool            `json:"has_native_binaries"`
+	HasInstallScripts bool            `json:"has_install_scripts"`
 }
 
 type StateChangeRequest struct {
@@ -100,6 +153,9 @@ type Store interface {
 	UpsertVersion(ctx context.Context, version VersionRecord) (VersionRecord, error)
 	SetReleaseState(ctx context.Context, name, version string, state ReleaseState, req StateChangeRequest) (VersionRecord, error)
 	CreateEval(ctx context.Context, eval EvalRecord) (EvalRecord, error)
+	CreateAudit(ctx context.Context, audit AuditRecord) (AuditRecord, error)
+	GetAudit(ctx context.Context, auditID string) (AuditRecord, error)
+	GetLatestAudit(ctx context.Context, name, version string) (AuditRecord, error)
 }
 
 func NormalizeState(state ReleaseState) ReleaseState {

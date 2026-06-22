@@ -59,6 +59,10 @@ func (s *FileStore) Get(hash string) (*os.File, error) {
 	return os.Open(path)
 }
 
+func (s *FileStore) Path(hash string) (string, error) {
+	return s.path(hash)
+}
+
 func (s *FileStore) path(hash string) (string, error) {
 	if hash == "" || strings.Contains(hash, "..") || strings.ContainsAny(hash, `/\`) {
 		return "", errors.New("invalid artifact hash")

@@ -84,6 +84,78 @@ func TestArtifactPutGet(t *testing.T) {
 	}
 }
 
+func TestAuditCreateGetLatestFlow(t *testing.T) {
+	handler := testServer(t)
+	publish := `{
+		"source": "native",
+		"publisher": "github:usharma123/demo",
+		"manifest": {"package":{"name":"demo","version":"0.1.0"}},
+		"artifact_hash": "sha512-demo",
+		"executables": [{"command":"demo","entry":"./bin/demo.js"}]
+	}`
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, authedRequest(http.MethodPost, "/v1/packages/demo/0.1.0/publish", publish))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("publish failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	audit := `{
+		"status": "passed",
+		"sandbox_runtime": "gvisor/runsc",
+		"agent_image": "rivet-audit-agent:local",
+		"evidence": {"static":{"artifact_size":10}},
+		"verdict": "medium",
+		"risk_score": 42,
+		"reasons": ["install lifecycle script present"],
+		"suggested_actions": ["warn_user"],
+		"signature": "hmac-sha256:test",
+		"cost_cents": 50
+	}`
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, authedRequest(http.MethodPost, "/v1/packages/demo/0.1.0/audits", audit))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("audit create failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var created registry.AuditRecord
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ReleaseStateApplied != registry.StateWarned {
+		t.Fatalf("expected warning state, got %#v", created.ReleaseStateApplied)
+	}
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/packages/demo/0.1.0/audits/latest", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("latest audit failed: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUnsignedAuditRejected(t *testing.T) {
+	handler := testServer(t)
+	publish := `{"manifest":{"package":{"name":"demo","version":"0.1.0"}},"artifact_hash":"sha512-demo"}`
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, authedRequest(http.MethodPost, "/v1/packages/demo/0.1.0/publish", publish))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("publish failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	audit := `{
+		"status": "passed",
+		"sandbox_runtime": "gvisor/runsc",
+		"agent_image": "rivet-audit-agent:local",
+		"evidence": {},
+		"verdict": "low",
+		"risk_score": 12,
+		"reasons": []
+	}`
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, authedRequest(http.MethodPost, "/v1/packages/demo/0.1.0/audits", audit))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected unsigned audit rejection, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func testServer(t *testing.T) http.Handler {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "artifacts")

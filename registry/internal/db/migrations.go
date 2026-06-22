@@ -33,6 +33,15 @@ CREATE TABLE IF NOT EXISTS package_versions (
   UNIQUE(package_id, version)
 );
 
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS artifact_size BIGINT DEFAULT 0;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS download_count BIGINT DEFAULT 0;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS last_published_by TEXT;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS source_repo TEXT;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS source_visibility TEXT DEFAULT 'unknown';
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS has_native_binaries BOOLEAN DEFAULT false;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS has_install_scripts BOOLEAN DEFAULT false;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS latest_verified_audit_id TEXT;
+
 CREATE TABLE IF NOT EXISTS executables (
   id TEXT PRIMARY KEY,
   package_version_id TEXT REFERENCES package_versions(id) ON DELETE CASCADE,
@@ -58,6 +67,27 @@ CREATE TABLE IF NOT EXISTS evals (
   privacy_summary JSONB,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS audits (
+  id TEXT PRIMARY KEY,
+  package_version_id TEXT REFERENCES package_versions(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  sandbox_runtime TEXT NOT NULL,
+  agent_image TEXT NOT NULL,
+  agent_image_digest TEXT,
+  evidence JSONB NOT NULL,
+  verdict TEXT NOT NULL,
+  risk_score INTEGER NOT NULL,
+  reasons JSONB NOT NULL,
+  suggested_actions JSONB,
+  signature TEXT NOT NULL,
+  cost_cents INTEGER NOT NULL DEFAULT 50,
+  release_state_applied TEXT,
+  started_at TIMESTAMPTZ DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS audits_package_version_started_idx ON audits(package_version_id, started_at DESC);
 `)
 	return err
 }
