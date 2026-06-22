@@ -1,5 +1,8 @@
+pub mod artifact;
 pub mod lockfile;
 pub mod manifest;
+pub mod npm;
 pub mod output;
 pub mod paths;
+pub mod registry_client;
 pub mod store;
