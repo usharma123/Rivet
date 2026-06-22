@@ -5,7 +5,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const artifactPath = "/artifact/package.tgz";
-const workDir = "/tmp/rivet-audit";
+const workDir = "/evidence/work";
 let packageDir = path.join(workDir, "package");
 const evidencePath = "/evidence/evidence.json";
 
@@ -14,7 +14,17 @@ async function main() {
   fs.mkdirSync(workDir, { recursive: true });
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
 
-  const extract = spawnSync("tar", ["-xzf", artifactPath, "-C", workDir], {
+  const extract = spawnSync("tar", [
+    "--extract",
+    "--gzip",
+    "--file",
+    artifactPath,
+    "--directory",
+    workDir,
+    "--touch",
+    "--no-same-owner",
+    "--no-same-permissions",
+  ], {
     encoding: "utf8",
     timeout: 30000,
   });
