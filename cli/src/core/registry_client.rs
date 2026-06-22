@@ -43,6 +43,21 @@ impl RegistryClient {
         self.post("/v1/import/npm", request)
     }
 
+    pub fn package_action<T: Serialize>(
+        &self,
+        package: &str,
+        version: &str,
+        action: &str,
+        request: &T,
+    ) -> Result<serde_json::Value> {
+        let package = urlencoding::encode(package);
+        let version = urlencoding::encode(version);
+        self.post(
+            &format!("/v1/packages/{package}/{version}/{action}"),
+            request,
+        )
+    }
+
     pub fn post<T: Serialize>(&self, path: &str, request: &T) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
         let response = self

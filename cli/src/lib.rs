@@ -3,7 +3,7 @@ mod core;
 
 use anyhow::Result;
 use clap::Parser;
-use commands::{add, import, init, inspect, install, run};
+use commands::{add, import, init, inspect, install, publish, release, run};
 use core::output::OutputMode;
 
 #[derive(Debug, Parser)]
@@ -148,11 +148,19 @@ pub fn run() -> Result<()> {
             args,
             flags,
         } => run::run(command, args, flags),
-        Command::Publish { .. }
-        | Command::Revoke { .. }
-        | Command::Yank { .. }
-        | Command::Eval { .. }
-        | Command::Byok { .. } => Err(anyhow::anyhow!(
+        Command::Publish { flags } => publish::run(flags),
+        Command::Revoke {
+            package,
+            reason,
+            replacement,
+            flags,
+        } => release::revoke(package, reason, replacement, flags),
+        Command::Yank {
+            package,
+            reason,
+            flags,
+        } => release::yank(package, reason, flags),
+        Command::Eval { .. } | Command::Byok { .. } => Err(anyhow::anyhow!(
             "command is scaffolded but not implemented yet"
         )),
     }
