@@ -39,6 +39,12 @@ RIVET_ARTIFACT_DIR=./artifacts \
 go run ./cmd/server
 ```
 
+Build the local static gVisor audit-agent image:
+
+```sh
+make audit-agent-image
+```
+
 Run the CLI:
 
 ```sh
@@ -54,4 +60,3 @@ Useful checks:
 make test
 make fmt-check
 ```
-
