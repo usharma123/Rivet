@@ -12,7 +12,7 @@ const (
 
 func ValidateReleaseState(state ReleaseState) error {
 	switch state {
-	case StateActive, StateWarned, StateQuarantined, StateYanked, StateRevoked, StateBlocked, StateArchived:
+	case StatePending, StateActive, StateWarned, StateQuarantined, StateYanked, StateRevoked, StateBlocked, StateArchived:
 		return nil
 	default:
 		return fmt.Errorf("%w: unknown release state %q", ErrInvalidRequest, state)
@@ -77,8 +77,8 @@ func ValidateAudit(audit AuditRecord) error {
 	if audit.PackageName == "" || audit.Version == "" {
 		return fmt.Errorf("%w: package and version are required", ErrInvalidRequest)
 	}
-	if audit.SandboxRuntime != "gvisor/runsc" {
-		return fmt.Errorf("%w: sandbox runtime must be gvisor/runsc", ErrInvalidRequest)
+	if audit.SandboxRuntime != SandboxGVisor && audit.SandboxRuntime != SandboxStatic {
+		return fmt.Errorf("%w: unknown sandbox runtime %q", ErrInvalidRequest, audit.SandboxRuntime)
 	}
 	if audit.Signature == "" {
 		return fmt.Errorf("%w: registry audit signature is required", ErrInvalidRequest)
@@ -87,4 +87,31 @@ func ValidateAudit(audit AuditRecord) error {
 		audit.CostCents = 50
 	}
 	return nil
+}
+
+// StateAfterAudit applies an audit verdict without undoing manual decisions:
+// a revoked, yanked or archived release stays that way when re-audited.
+func StateAfterAudit(current ReleaseState, verdict AuditVerdict) ReleaseState {
+	switch current {
+	case StateRevoked, StateYanked, StateArchived:
+		return current
+	}
+	return StateForVerdict(verdict)
+}
+
+// ValidateNewVersion checks the fields every stored release must carry.
+func ValidateNewVersion(version VersionRecord) error {
+	if version.Name == "" || version.Version == "" {
+		return fmt.Errorf("%w: name and version are required", ErrInvalidRequest)
+	}
+	if len(version.Manifest) == 0 {
+		return fmt.Errorf("%w: manifest is required", ErrInvalidRequest)
+	}
+	if version.ArtifactHash == "" {
+		return fmt.Errorf("%w: artifact_hash is required", ErrInvalidRequest)
+	}
+	if version.TreeDigest == "" {
+		return fmt.Errorf("%w: tree_digest is required", ErrInvalidRequest)
+	}
+	return ValidateReleaseState(NormalizeState(version.State))
 }

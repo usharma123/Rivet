@@ -1,0 +1,20 @@
+# Linux validation image: runs the CLI's live bubblewrap/seccomp tests and the
+# npm end-to-end script as an unprivileged user. See tools/e2e/linux.sh.
+FROM rust:1-bookworm
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl python3 \
+ && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG GO_VERSION=1.25.8
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" \
+  | tar -C /usr/local -xz
+ENV PATH=/usr/local/go/bin:$PATH
+
+RUN useradd --create-home rivet
+USER rivet
+WORKDIR /home/rivet
+# Cache volumes mount here; creating them as rivet gives them rivet's owner.
+RUN mkdir -p /home/rivet/target /home/rivet/.cargo/registry

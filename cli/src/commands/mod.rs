@@ -8,4 +8,5 @@ pub mod install;
 pub mod publish;
 pub mod release;
 pub mod run;
+pub mod trust;
 pub mod verify;

@@ -4,12 +4,16 @@ use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use serde_json::json;
 
+use time::OffsetDateTime;
+
+use crate::commands::import::describe;
 use crate::core::{
     artifact::{create_project_tgz, sha512_hex},
+    attestation::Envelope,
     manifest::Manifest,
     output::{emit_many, Event, OutputMode},
     paths::ProjectPaths,
-    registry_client::RegistryClient,
+    session::Session,
 };
 use crate::CommonFlags;
 
@@ -49,7 +53,10 @@ pub fn run(flags: CommonFlags) -> Result<()> {
                 format!("Version: {}", manifest.package.version),
                 format!("Commands: {}", executables.len()),
                 format!("Generated artifact: {artifact_hash}"),
-                format!("Risk: {}", risk.level),
+                format!(
+                    "Local risk preview: {} (the registry audit decides)",
+                    risk.level
+                ),
             ],
             vec![
                 Event::new("publish.started")
@@ -68,81 +75,75 @@ pub fn run(flags: CommonFlags) -> Result<()> {
         bail!("publish cancelled");
     }
 
-    let registry = RegistryClient::from_env()?;
-    registry.put_artifact(&artifact_hash, &artifact)?;
+    let session = Session::open()?;
+    session.client.put_artifact(&artifact_hash, &artifact)?;
+    let identity = manifest
+        .publisher
+        .as_ref()
+        .map(|publisher| publisher.identity.clone())
+        .unwrap_or_default();
     let request = PublishRequest {
-        source: "native",
-        publisher: manifest
-            .publisher
-            .as_ref()
-            .map(|publisher| publisher.identity.clone())
-            .unwrap_or_default(),
-        state: "active",
+        publisher: identity.clone(),
         manifest: serde_json::to_value(&manifest)?,
         artifact_hash: artifact_hash.clone(),
-        artifact_url: format!("/v1/artifacts/{artifact_hash}"),
-        source_metadata: json!({"local": {"path": paths.root}}),
-        executables,
-        risk_score: risk.score as u16,
-        artifact_size: artifact.len() as u64,
-        last_published_by: manifest
-            .publisher
-            .as_ref()
-            .map(|publisher| publisher.identity.clone())
-            .unwrap_or_else(|| "local-dev".to_string()),
-        source_repo: manifest
-            .publisher
-            .as_ref()
-            .map(|publisher| publisher.identity.clone())
-            .unwrap_or_default(),
-        source_visibility: "unknown",
-        has_native_binaries: false,
-        has_install_scripts: !manifest.scripts.is_empty(),
+        source_repo: identity,
     };
-    let response = registry.package_action(
+    let response = session.client.package_action(
         &manifest.package.name,
         &manifest.package.version,
         "publish",
         &request,
     )?;
-    if flags.output_mode() == OutputMode::Events {
-        println!(
+    let envelope: Envelope = serde_json::from_value(
+        response
+            .get("attestation")
+            .cloned()
+            .context("registry response has no attestation")?,
+    )?;
+    let statement = envelope.verify(&session.key, OffsetDateTime::now_utc())?;
+    if statement.name != manifest.package.name
+        || statement.version != manifest.package.version
+        || statement.artifact.hash != artifact_hash
+    {
+        bail!(
+            "registry attested {} with artifact {}, not what was published",
+            statement.id(),
+            statement.artifact.hash
+        );
+    }
+    match flags.output_mode() {
+        OutputMode::Events => println!(
             "{}",
             serde_json::to_string(
                 &Event::new("release.published")
                     .with("package", manifest.package.name)
                     .with("version", manifest.package.version)
+                    .with("state", statement.state.clone())
             )?
-        );
-    } else if flags.output_mode() == OutputMode::Json {
-        println!(
+        ),
+        OutputMode::Json => println!(
             "{}",
             serde_json::to_string_pretty(&json!({
                 "review": review,
-                "registry_response": response,
+                "statement": statement,
             }))?
-        );
+        ),
+        OutputMode::Human => {
+            println!();
+            for line in describe(&statement) {
+                println!("  {line}");
+            }
+        }
     }
     Ok(())
 }
 
 #[derive(Debug, Serialize)]
 struct PublishRequest {
-    source: &'static str,
     publisher: String,
-    state: &'static str,
     manifest: serde_json::Value,
     artifact_hash: String,
-    artifact_url: String,
-    source_metadata: serde_json::Value,
-    executables: Vec<RegistryExecutable>,
-    risk_score: u16,
-    artifact_size: u64,
-    last_published_by: String,
     source_repo: String,
-    source_visibility: &'static str,
-    has_native_binaries: bool,
-    has_install_scripts: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

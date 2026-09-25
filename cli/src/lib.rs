@@ -3,7 +3,9 @@ mod core;
 
 use anyhow::Result;
 use clap::Parser;
-use commands::{add, byok, eval, import, init, inspect, install, publish, release, run, verify};
+use commands::{
+    add, byok, eval, import, init, inspect, install, publish, release, run, trust, verify,
+};
 use core::output::OutputMode;
 
 #[derive(Debug, Parser)]
@@ -29,6 +31,9 @@ pub enum Command {
         flags: CommonFlags,
     },
     Install {
+        /// Fail instead of re-resolving when rivet.lock is missing or stale.
+        #[arg(long)]
+        frozen: bool,
         #[command(flatten)]
         flags: CommonFlags,
     },
@@ -43,6 +48,9 @@ pub enum Command {
         flags: CommonFlags,
     },
     Run {
+        /// Project whose node_modules provides the command (default: current directory).
+        #[arg(long)]
+        project: Option<std::path::PathBuf>,
         command: String,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
@@ -51,8 +59,9 @@ pub enum Command {
     },
     Verify {
         target: String,
-        #[arg(long, default_value = "gvisor")]
-        sandbox: String,
+        /// Ask the registry to re-run its audit (requires RIVET_REGISTRY_TOKEN).
+        #[arg(long)]
+        reaudit: bool,
         #[command(flatten)]
         flags: CommonFlags,
     },
@@ -66,6 +75,9 @@ pub enum Command {
         reason: String,
         #[arg(long)]
         replacement: Option<String>,
+        /// Registry-admin override for widely used releases (needs the admin token).
+        #[arg(long)]
+        security_evidence: bool,
         #[command(flatten)]
         flags: CommonFlags,
     },
@@ -73,6 +85,9 @@ pub enum Command {
         package: String,
         #[arg(long)]
         reason: String,
+        /// Registry-admin override for widely used releases (needs the admin token).
+        #[arg(long)]
+        registry_approved: bool,
         #[command(flatten)]
         flags: CommonFlags,
     },
@@ -86,6 +101,24 @@ pub enum Command {
     Byok {
         #[command(subcommand)]
         command: ByokCommand,
+    },
+    Trust {
+        #[command(subcommand)]
+        command: TrustCommand,
+    },
+}
+
+#[derive(Debug, clap::Subcommand)]
+pub enum TrustCommand {
+    /// Show the pinned registry signing key.
+    Show {
+        #[command(flatten)]
+        flags: CommonFlags,
+    },
+    /// Forget the pinned key so the next command re-pins it.
+    Reset {
+        #[command(flatten)]
+        flags: CommonFlags,
     },
 }
 
@@ -122,12 +155,33 @@ pub struct CommonFlags {
     pub unsafe_allow_risk: bool,
     #[arg(long)]
     pub unsafe_allow_revoked: bool,
+    /// Run install scripts of every package (inside the sandbox).
     #[arg(long)]
     pub allow_scripts: bool,
+    /// Let the command use the network when run.
     #[arg(long)]
     pub allow_network: bool,
+    /// Accept releases that have not passed a registry audit.
     #[arg(long)]
     pub allow_unverified: bool,
+    /// Disable the release cooldown and accept freshly published versions.
+    #[arg(long)]
+    pub allow_fresh: bool,
+    /// Override the cooldown (hours a release must be public before install).
+    #[arg(long)]
+    pub min_age_hours: Option<f64>,
+    /// Refuse packages without verified Sigstore provenance.
+    #[arg(long)]
+    pub require_provenance: bool,
+    /// Pass an extra environment variable through to the sandbox.
+    #[arg(long = "allow-env", value_name = "NAME")]
+    pub allow_env: Vec<String>,
+    /// Grant write access to an extra path when running.
+    #[arg(long = "allow-write", value_name = "PATH")]
+    pub allow_write: Vec<std::path::PathBuf>,
+    /// Run package code without OS isolation (not recommended).
+    #[arg(long)]
+    pub unsafe_no_sandbox: bool,
 }
 
 impl CommonFlags {
@@ -147,36 +201,40 @@ pub fn run() -> Result<()> {
     match cli.command {
         Command::Init { flags } => init::run(flags),
         Command::Add { package, flags } => add::run(package, flags),
-        Command::Install { flags } => install::run(flags),
+        Command::Install { frozen, flags } => install::run(frozen, flags),
         Command::Import { spec, flags } => import::run(spec, flags),
         Command::Inspect { target, flags } => inspect::run(target, flags),
         Command::Run {
+            project,
             command,
             args,
             flags,
-        } => run::run(command, args, flags),
+        } => run::run(project, command, args, flags),
         Command::Verify {
             target,
-            sandbox,
+            reaudit,
             flags,
-        } => verify::run(target, sandbox, flags),
+        } => verify::run(target, reaudit, flags),
         Command::Publish { flags } => publish::run(flags),
         Command::Revoke {
             package,
             reason,
             replacement,
+            security_evidence,
             flags,
-        } => release::revoke(package, reason, replacement, flags),
+        } => release::revoke(package, reason, replacement, security_evidence, flags),
         Command::Yank {
             package,
             reason,
+            registry_approved,
             flags,
-        } => release::yank(package, reason, flags),
+        } => release::yank(package, reason, registry_approved, flags),
         Command::Eval {
             package,
             byok,
             flags,
         } => eval::run(package, byok, flags),
         Command::Byok { command } => byok::run(command),
+        Command::Trust { command } => trust::run(command),
     }
 }

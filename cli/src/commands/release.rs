@@ -12,30 +12,44 @@ pub fn revoke(
     package: String,
     reason: String,
     replacement: Option<String>,
+    security_evidence: bool,
     flags: CommonFlags,
 ) -> Result<()> {
-    change_state(package, "revoke", reason, replacement, flags)
+    let request = StateChangeRequest {
+        reason: reason.clone(),
+        replacement_version: replacement,
+        security_evidence,
+        registry_approved: false,
+    };
+    change_state(package, "revoke", request, flags)
 }
 
-pub fn yank(package: String, reason: String, flags: CommonFlags) -> Result<()> {
-    change_state(package, "yank", reason, None, flags)
+pub fn yank(
+    package: String,
+    reason: String,
+    registry_approved: bool,
+    flags: CommonFlags,
+) -> Result<()> {
+    let request = StateChangeRequest {
+        reason,
+        replacement_version: None,
+        security_evidence: false,
+        registry_approved,
+    };
+    change_state(package, "yank", request, flags)
 }
 
 fn change_state(
     package: String,
     action: &'static str,
-    reason: String,
-    replacement: Option<String>,
+    request: StateChangeRequest,
     flags: CommonFlags,
 ) -> Result<()> {
-    if reason.trim().is_empty() {
+    if request.reason.trim().is_empty() {
         bail!("--reason is required");
     }
+    let reason = request.reason.clone();
     let (name, version) = parse_package_version(&package)?;
-    let request = StateChangeRequest {
-        reason: reason.clone(),
-        replacement_version: replacement,
-    };
 
     let planned = json!({
             "package": name,
@@ -80,6 +94,10 @@ struct StateChangeRequest {
     reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     replacement_version: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    security_evidence: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    registry_approved: bool,
 }
 
 fn parse_package_version(spec: &str) -> Result<(String, String)> {

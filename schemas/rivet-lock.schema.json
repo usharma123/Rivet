@@ -2,25 +2,48 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.rivet.dev/rivet-lock.schema.json",
   "title": "Rivet Lockfile",
+  "description": "Fully resolved dependency graph. Every package is pinned to the artifact hash and tree digest signed by one registry key; installs re-verify fresh signed statements against these values.",
   "type": "object",
-  "required": ["version", "packages"],
+  "required": ["version", "registry", "registry_key", "roots", "packages"],
   "properties": {
-    "version": { "const": 1 },
-    "packages": {
+    "version": { "const": 2 },
+    "registry": { "type": "string", "description": "Registry base URL the graph was resolved against." },
+    "registry_key": { "type": "string", "pattern": "^ed25519:[0-9a-f]{32}$" },
+    "roots": {
       "type": "object",
+      "description": "Direct dependencies from rivet.toml, keyed by alias.",
       "additionalProperties": {
         "type": "object",
-        "required": ["version", "source", "artifact", "integrity", "registry", "state"],
+        "required": ["spec", "package"],
         "properties": {
+          "spec": { "type": "string" },
+          "package": { "type": "string", "description": "Package id (name@version)." }
+        }
+      }
+    },
+    "packages": {
+      "type": "object",
+      "description": "Every package in the graph, keyed by id (name@version).",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "version", "artifact", "tree_digest", "state", "verdict", "provenance"],
+        "properties": {
+          "name": { "type": "string" },
           "version": { "type": "string" },
-          "source": { "type": "string" },
-          "artifact": { "type": "string" },
-          "integrity": { "type": "string" },
-          "registry": { "type": "string" },
-          "state": { "type": "string" }
+          "artifact": { "type": "string", "pattern": "^sha512-[0-9a-f]{128}$" },
+          "tree_digest": { "type": "string", "pattern": "^rivet-tree-v1:sha256:[0-9a-f]{64}$" },
+          "state": { "enum": ["active", "warned", "yanked", "pending", "quarantined", "blocked", "revoked", "archived"] },
+          "verdict": { "type": "string" },
+          "provenance": { "enum": ["verified", "absent", "invalid", "unverifiable"] },
+          "dependencies": {
+            "type": "object",
+            "description": "Alias in node_modules to package id.",
+            "additionalProperties": { "type": "string" }
+          },
+          "optional": { "type": "boolean" },
+          "install_scripts": { "type": "array", "items": { "type": "string" } }
         }
       }
     }
   }
 }
-

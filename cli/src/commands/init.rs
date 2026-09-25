@@ -3,9 +3,10 @@ use serde_json::json;
 
 use crate::core::{
     lockfile::Lockfile,
-    manifest::{Manifest, PackageSection},
+    manifest::{Manifest, PackageSection, PolicySection},
     output::{emit, Event},
     paths::ProjectPaths,
+    registry_client::RegistryClient,
     store::LocalStore,
 };
 use crate::CommonFlags;
@@ -25,6 +26,7 @@ pub fn run(flags: CommonFlags) -> Result<()> {
             description: Some("A Rivet package".to_string()),
             license: Some("MIT".to_string()),
         },
+        policy: Some(PolicySection::default()),
         ..Manifest::default()
     };
 
@@ -43,7 +45,7 @@ pub fn run(flags: CommonFlags) -> Result<()> {
         return Ok(());
     }
 
-    let store = LocalStore::from_env()?;
+    let store = LocalStore::open(RegistryClient::from_env()?.base_url())?;
     if !paths.manifest.exists() {
         manifest
             .write_to(&paths.manifest)
@@ -56,6 +58,10 @@ pub fn run(flags: CommonFlags) -> Result<()> {
     }
     paths.ensure_metadata()?;
     store.ensure()?;
+    let gitignore = paths.root.join(".gitignore");
+    if !gitignore.exists() {
+        std::fs::write(&gitignore, "node_modules/\n")?;
+    }
 
     emit(
         flags.output_mode(),

@@ -21,9 +21,12 @@ cli_commands = [
   "eval",
   "byok add",
   "byok list",
+  "trust show",
+  "trust reset",
 ]
 schema_files = [
   "schemas/event.schema.json",
+  "schemas/rivet-attestation.schema.json",
   "schemas/rivet-lock.schema.json",
   "schemas/rivet-manifest.schema.json",
 ]
@@ -34,6 +37,9 @@ ci_required_commands = [
   "make cli-clippy",
   "make fmt-check",
   "make registry-test",
+  "make registry-test-postgres",
+  "make audit-agent-check",
+  "make e2e",
 ]
 
 [[release_groups]]
@@ -51,7 +57,7 @@ changelog_section = "Registry"
 [[release_groups]]
 id = "audit"
 label = "component:audit"
-paths = ["audit-agent/**", "registry/cmd/audit-agent/**", "registry/internal/audit/**"]
+paths = ["audit-agent/**", "registry/internal/audit/**"]
 changelog_section = "Verified Audit"
 
 [[release_groups]]
@@ -79,7 +85,9 @@ paths = [
   "rivet.workspace.toml",
   "workspace.snapshot.json",
   "tools/workspace/**",
+  "tools/e2e/**",
   "docs/adr/**",
+  "docs/security-review.md",
   ".github/**",
   "Makefile",
   "README.md",
@@ -94,13 +102,16 @@ owners = ["rivet-core"]
 release_group = "cli"
 public_interfaces = [
   "rivet command surface",
-  "rivet.toml project manifest behavior",
-  "rivet.lock project lockfile behavior",
+  "rivet.toml project manifest and [policy] behavior",
+  "rivet.lock v2 project lockfile behavior",
   "local content-addressed store layout",
+  "node_modules virtual-store layout and .bin shims",
+  "registry key pinning (trust on first use)",
+  "run-time sandbox (seatbelt / bubblewrap)",
 ]
 validation_commands = ["make cli-test", "make cli-clippy", "make cli-fmt-check"]
-docs = ["README.md", "docs/adr/0004-lockfile-resolver-policy.md"]
-schemas = ["schemas/rivet-manifest.schema.json", "schemas/rivet-lock.schema.json", "schemas/event.schema.json"]
+docs = ["README.md", "docs/adr/0004-lockfile-resolver-policy.md", "docs/adr/0007-signed-attestations-and-runtime-sandbox.md", "docs/security-review.md"]
+schemas = ["schemas/rivet-manifest.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-attestation.schema.json", "schemas/event.schema.json"]
 
 [[components]]
 id = "registry"
@@ -110,12 +121,15 @@ owners = ["rivet-core"]
 release_group = "registry"
 public_interfaces = [
   "HTTP /v1 package registry API",
+  "npm mirror and resolver (/v1/npm/resolve, /v1/import/npm)",
+  "Ed25519 signed release attestations (/v1/keys, /v1/attestations)",
+  "canonical tarball tree digest v1",
   "Postgres persistence schema",
-  "dev bearer-token mutation auth",
+  "publisher and admin bearer-token auth",
 ]
 validation_commands = ["make registry-test", "make registry-fmt-check"]
-docs = ["README.md", "docs/adr/0006-private-registry-precedence.md"]
-schemas = []
+docs = ["README.md", "docs/adr/0006-private-registry-precedence.md", "docs/adr/0007-signed-attestations-and-runtime-sandbox.md", "docs/security-review.md"]
+schemas = ["schemas/rivet-attestation.schema.json"]
 
 [[components]]
 id = "audit-agent"
@@ -124,9 +138,9 @@ path = "audit-agent"
 owners = ["rivet-security"]
 release_group = "audit"
 public_interfaces = [
-  "gVisor audit container contract",
+  "gVisor audit container contract (no network, honeytokens, egress hook)",
   "signed registry audit evidence shape",
-  "Node and static audit-agent images",
+  "Node dynamic audit-agent image",
 ]
 validation_commands = ["make audit-agent-check"]
 docs = ["README.md", "docs/adr/0005-audit-trust-policy.md"]
@@ -140,12 +154,13 @@ owners = ["rivet-core"]
 release_group = "schemas"
 public_interfaces = [
   "event.schema.json",
+  "rivet-attestation.schema.json",
   "rivet-lock.schema.json",
   "rivet-manifest.schema.json",
 ]
 validation_commands = ["make schema-check"]
 docs = ["README.md"]
-schemas = ["schemas/event.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-manifest.schema.json"]
+schemas = ["schemas/event.schema.json", "schemas/rivet-attestation.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-manifest.schema.json"]
 
 [[components]]
 id = "examples"
@@ -171,6 +186,8 @@ release_group = "fixtures"
 public_interfaces = [
   "benign npm-compatible package fixture",
   "risky postinstall/native package fixture",
+  "credential-stealer malicious package fixture",
+  "canonical tarball tree-digest vector",
   "fixture catalog snapshots",
 ]
 validation_commands = ["make fixtures-check"]

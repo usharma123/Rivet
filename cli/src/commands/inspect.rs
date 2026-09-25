@@ -1,134 +1,138 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::json;
+use time::OffsetDateTime;
 
+use crate::commands::import::describe;
 use crate::core::{
+    attestation::Statement,
     output::{emit, Event},
-    risk::combine_risk,
-    store::{LocalStore, StoredPackage},
+    resolver::split_name_version,
+    risk::namesquat,
+    session::Session,
 };
 use crate::CommonFlags;
 
 pub fn run(target: String, flags: CommonFlags) -> Result<()> {
-    let store = LocalStore::from_env()?;
-    let package = store
-        .read_package(&target, None)
-        .or_else(|_| {
-            let command = store.read_command(&target)?;
-            store.read_package(&command.package, Some(&command.version))
-        })
-        .ok();
-
-    match package {
-        Some(package) => inspect_package(target, package, flags),
-        None => inspect_unknown(target, flags),
-    }
-}
-
-fn inspect_package(target: String, package: StoredPackage, flags: CommonFlags) -> Result<()> {
-    let risk = combine_risk(package.risk_score, &package.risk_reasons, &target);
-    let mut lines = vec![
-        format!("Package: {}", package.name),
-        format!("Version: {}", package.version),
-        format!("Source: {}", package.source),
-        format!("State: {}", package.state),
-        format!("Artifact size: {} bytes", package.artifact_size),
-        format!(
-            "Publisher: {}",
-            package.publisher.as_deref().unwrap_or("unverified")
-        ),
-        format!(
-            "Last published by: {}",
-            package.last_published_by.as_deref().unwrap_or("unknown")
-        ),
-        format!(
-            "Source visibility: {}",
-            if package.source_visibility.is_empty() {
-                "unknown"
-            } else {
-                &package.source_visibility
+    let session = Session::open()?;
+    match find_statement(&session, &target)? {
+        Some(statement) => {
+            let mut lines = describe(&statement);
+            lines.push(format!(
+                "Dependencies: {}",
+                statement.manifest.dependencies.len()
+            ));
+            for executable in &statement.executables {
+                lines.push(format!(
+                    "Executable: {} -> {} permissions {}",
+                    executable.command,
+                    executable.entry,
+                    executable.permissions.clone().unwrap_or_else(|| json!({}))
+                ));
             }
-        ),
-        format!("Native binaries: {}", yes_no(package.has_native_binaries)),
-        format!("Install scripts: {}", yes_no(package.has_install_scripts)),
-        format!("Risk: {:?} ({})", risk.level, risk.score),
-    ];
-    if let Some(audit) = &package.verified_audit {
-        lines.push(format!("Verified audit: {}", audit.status));
-        lines.push(format!("Audit verdict: {}", audit.verdict));
-        lines.push(format!("Audit score: {}", audit.risk_score));
-        lines.push(format!(
-            "Audit signature: {}",
-            if audit.signature.is_empty() {
-                "missing"
-            } else {
-                "present"
+            emit(
+                flags.output_mode(),
+                "Rivet Inspect",
+                lines,
+                Event::new("risk.detected")
+                    .with("name", statement.name.clone())
+                    .with("verdict", statement.verdict()),
+                json!({"found": true, "statement": statement}),
+            )
+        }
+        None => {
+            let (name, _) = split_name_version(&target);
+            let squat = namesquat(&name);
+            let mut lines = vec![
+                format!("Package: {target}"),
+                "State: not in the Rivet registry".to_string(),
+            ];
+            if let Some(squat) = &squat {
+                lines.push(format!(
+                    "Warning: possible namesquat of {}",
+                    squat.confusable_with
+                ));
+                lines.push(
+                    "Recommendation: do not install unless you meant this exact package.".into(),
+                );
             }
-        ));
-        lines.push(format!("Audit cost: {} cents", audit.cost_cents));
-    } else {
-        lines.push("Verified audit: none".to_string());
-    }
-    for executable in &package.executables {
-        lines.push(format!("Executable: {}", executable.command));
-        lines.push(format!("Entry: {}", executable.entry));
-        lines.push(format!("Permissions: {}", executable.permissions));
-    }
-    if let Some(confusable) = &risk.confusable_with {
-        lines.push(format!("Warning: possible namesquat with {confusable}"));
-    }
-    if package.executables.is_empty() {
-        lines.push("Executables: none".to_string());
-    }
-
-    emit(
-        flags.output_mode(),
-        "Rivet Inspect",
-        lines,
-        Event::new("risk.detected")
-            .with("name", package.name.clone())
-            .with("risk", risk.score),
-        json!({
-            "package": package,
-            "risk": risk,
-        }),
-    )
-}
-
-fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
+            emit(
+                flags.output_mode(),
+                "Rivet Inspect",
+                lines,
+                Event::new("risk.detected").with("name", name.clone()),
+                json!({"found": false, "package": target, "namesquat": squat}),
+            )
+        }
     }
 }
 
-fn inspect_unknown(target: String, flags: CommonFlags) -> Result<()> {
-    let risk = combine_risk(20, &["unverified package".to_string()], &target);
-    let mut lines = vec![
-        format!("Package: {target}"),
-        "State: not imported".to_string(),
-        "Publisher: unverified".to_string(),
-        format!("Risk: {:?} ({})", risk.level, risk.score),
-    ];
-    if let Some(confusable) = &risk.confusable_with {
-        lines.push("Warning: possible namesquat".to_string());
-        lines.push(format!("Confusable with: {confusable}"));
-        lines.push(
-            "Recommendation: do not install unless you intentionally meant this exact package."
-                .to_string(),
-        );
+/// Finds a verified statement for a command, "name@version" or "name".
+pub fn find_statement(session: &Session, target: &str) -> Result<Option<Statement>> {
+    find_statement_with_freshness(session, target, false)
+}
+
+pub fn find_statement_with_freshness(
+    session: &Session,
+    target: &str,
+    require_fresh: bool,
+) -> Result<Option<Statement>> {
+    let (name, version) = match session.store.read_command(target) {
+        Ok(command) => (command.package, Some(command.version)),
+        Err(_) => split_name_version(target),
+    };
+    let version = match version {
+        Some(version) => version,
+        None => match latest_known(session, &name)? {
+            Some(version) => version,
+            None => return Ok(None),
+        },
+    };
+    let now = OffsetDateTime::now_utc();
+    match session.client.attestation(&name, &version) {
+        Ok(envelope) => {
+            let statement = envelope.verify(&session.key, now)?;
+            if statement.name != name || statement.version != version {
+                anyhow::bail!(
+                    "registry answered {} for requested {name}@{version}",
+                    statement.id()
+                );
+            }
+            session
+                .store
+                .cache_attestation(&statement, &envelope, &session.key)?;
+            Ok(Some(statement))
+        }
+        Err(err) => match session
+            .store
+            .cached_attestation(&name, &version, &session.key)?
+        {
+            Some((statement, envelope)) => {
+                eprintln!("rivet: registry unavailable ({err:#}); showing cached statement");
+                if require_fresh {
+                    Ok(Some(envelope.verify(&session.key, now)?))
+                } else {
+                    Ok(Some(statement))
+                }
+            }
+            None if err.to_string().contains("404") => Ok(None),
+            None => Err(err).context("fetch attestation"),
+        },
     }
-    emit(
-        flags.output_mode(),
-        "Rivet Inspect",
-        lines,
-        Event::new("risk.detected")
-            .with("name", target.clone())
-            .with("risk", risk.score),
-        json!({
-            "package": target,
-            "found": false,
-            "risk": risk,
-        }),
-    )
+}
+
+fn latest_known(session: &Session, name: &str) -> Result<Option<String>> {
+    let path = format!("/v1/packages/{}", urlencoding::encode(name));
+    let Ok(value) = session.client.get(&path) else {
+        return Ok(None);
+    };
+    let versions = value
+        .get("versions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    Ok(versions
+        .iter()
+        .filter(|v| v.get("latest_verified_audit_id").is_some())
+        .filter_map(|v| v.get("version").and_then(|v| v.as_str()).map(String::from))
+        .next())
 }

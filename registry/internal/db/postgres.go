@@ -88,21 +88,27 @@ LIMIT 50`, query)
 }
 
 func (s *PostgresStore) UpsertVersion(ctx context.Context, version registry.VersionRecord) (registry.VersionRecord, error) {
-	version.State = registry.NormalizeState(version.State)
-	if err := registry.ValidateReleaseState(version.State); err != nil {
+	if err := registry.ValidateNewVersion(version); err != nil {
 		return registry.VersionRecord{}, err
 	}
-	if len(version.Manifest) == 0 {
-		return registry.VersionRecord{}, fmt.Errorf("%w: manifest is required", registry.ErrInvalidRequest)
+	if existing, err := s.getVersion(ctx, version.Name, version.Version); err == nil {
+		if existing.ArtifactHash != version.ArtifactHash {
+			return registry.VersionRecord{}, fmt.Errorf("%w: %s@%s is already published with different content", registry.ErrConflict, version.Name, version.Version)
+		}
+		return existing, nil
+	} else if !errors.Is(err, registry.ErrNotFound) {
+		return registry.VersionRecord{}, err
 	}
-	if version.ArtifactHash == "" {
-		return registry.VersionRecord{}, fmt.Errorf("%w: artifact_hash is required", registry.ErrInvalidRequest)
-	}
+	version.State = registry.NormalizeState(version.State)
 	if version.ArtifactURL == "" {
 		version.ArtifactURL = "/v1/artifacts/" + version.ArtifactHash
 	}
 	if len(version.SourceMetadata) == 0 {
 		version.SourceMetadata = json.RawMessage(`{}`)
+	}
+	publishedAt := version.PublishedAt
+	if publishedAt.IsZero() {
+		publishedAt = s.now()
 	}
 
 	tx, err := s.conn.BeginTx(ctx, nil)
@@ -116,45 +122,43 @@ func (s *PostgresStore) UpsertVersion(ctx context.Context, version registry.Vers
 INSERT INTO packages (id, name, source, publisher)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (name)
-DO UPDATE SET source = EXCLUDED.source, publisher = EXCLUDED.publisher
+DO UPDATE SET name = EXCLUDED.name
 RETURNING id`, packageID, version.Name, version.Source, nullString(version.Publisher)).
 		Scan(&packageID)
 	if err != nil {
 		return registry.VersionRecord{}, err
 	}
 
+	// Versions are immutable: a concurrent insert of the same version loses
+	// the race and is re-read (and hash-checked) below.
 	versionID := newID()
-	err = tx.QueryRowContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 INSERT INTO package_versions (
   id, package_id, version, source, state, manifest, artifact_hash, artifact_url,
   source_metadata, risk_score, artifact_size, last_published_by, source_repo,
-  source_visibility, has_native_binaries, has_install_scripts, published_at
+  source_visibility, has_native_binaries, has_install_scripts, published_at, tree_digest
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
-ON CONFLICT (package_id, version)
-DO UPDATE SET
-  source = EXCLUDED.source,
-  state = EXCLUDED.state,
-  manifest = EXCLUDED.manifest,
-  artifact_hash = EXCLUDED.artifact_hash,
-  artifact_url = EXCLUDED.artifact_url,
-  source_metadata = EXCLUDED.source_metadata,
-  risk_score = EXCLUDED.risk_score,
-  artifact_size = EXCLUDED.artifact_size,
-  last_published_by = EXCLUDED.last_published_by,
-  source_repo = EXCLUDED.source_repo,
-  source_visibility = EXCLUDED.source_visibility,
-  has_native_binaries = EXCLUDED.has_native_binaries,
-  has_install_scripts = EXCLUDED.has_install_scripts,
-  published_at = package_versions.published_at
-RETURNING id`, versionID, packageID, version.Version, version.Source, string(version.State), version.Manifest,
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+ON CONFLICT (package_id, version) DO NOTHING`, versionID, packageID, version.Version, version.Source, string(version.State), version.Manifest,
 		version.ArtifactHash, version.ArtifactURL, version.SourceMetadata, version.RiskScore,
 		version.ArtifactSize, nullString(version.LastPublishedBy), nullString(version.SourceRepo),
 		nullString(defaultString(version.SourceVisibility, "unknown")), version.HasNativeBinaries,
-		version.HasInstallScripts).
-		Scan(&versionID)
+		version.HasInstallScripts, publishedAt, version.TreeDigest)
 	if err != nil {
 		return registry.VersionRecord{}, err
+	}
+	if inserted, _ := result.RowsAffected(); inserted == 0 {
+		if err := tx.Rollback(); err != nil {
+			return registry.VersionRecord{}, err
+		}
+		existing, err := s.getVersion(ctx, version.Name, version.Version)
+		if err != nil {
+			return registry.VersionRecord{}, err
+		}
+		if existing.ArtifactHash != version.ArtifactHash {
+			return registry.VersionRecord{}, fmt.Errorf("%w: %s@%s is already published with different content", registry.ErrConflict, version.Name, version.Version)
+		}
+		return existing, nil
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM executables WHERE package_version_id = $1`, versionID); err != nil {
@@ -265,8 +269,6 @@ func (s *PostgresStore) CreateAudit(ctx context.Context, audit registry.AuditRec
 	if err := registry.ValidateAudit(audit); err != nil {
 		return registry.AuditRecord{}, err
 	}
-	state := registry.StateForVerdict(audit.Verdict)
-	audit.ReleaseStateApplied = state
 
 	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -274,18 +276,21 @@ func (s *PostgresStore) CreateAudit(ctx context.Context, audit registry.AuditRec
 	}
 	defer tx.Rollback()
 
-	var versionID string
+	var versionID, currentState string
 	err = tx.QueryRowContext(ctx, `
-SELECT pv.id
+SELECT pv.id, pv.state
 FROM package_versions pv
 JOIN packages p ON p.id = pv.package_id
-WHERE p.name = $1 AND pv.version = $2`, audit.PackageName, audit.Version).Scan(&versionID)
+WHERE p.name = $1 AND pv.version = $2
+FOR UPDATE OF pv`, audit.PackageName, audit.Version).Scan(&versionID, &currentState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return registry.AuditRecord{}, registry.ErrNotFound
 	}
 	if err != nil {
 		return registry.AuditRecord{}, err
 	}
+	state := registry.StateAfterAudit(registry.ReleaseState(currentState), audit.Verdict)
+	audit.ReleaseStateApplied = state
 
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO audits (
@@ -410,7 +415,7 @@ SELECT
   COALESCE(pv.artifact_size, 0), COALESCE(pv.download_count, 0), COALESCE(pv.last_published_by, ''),
   COALESCE(pv.source_repo, ''), COALESCE(pv.source_visibility, 'unknown'),
   COALESCE(pv.has_native_binaries, false), COALESCE(pv.has_install_scripts, false),
-  COALESCE(pv.latest_verified_audit_id, '')
+  COALESCE(pv.latest_verified_audit_id, ''), COALESCE(pv.tree_digest, '')
 FROM package_versions pv
 JOIN packages p ON p.id = pv.package_id
 WHERE p.name = $1 AND pv.version = $2`, name, version).
@@ -419,7 +424,7 @@ WHERE p.name = $1 AND pv.version = $2`, name, version).
 			&record.PublishedAt, &record.RevokedAt, &record.RevokeReason, &record.ReplacementVersion,
 			&record.RiskScore, &record.ArtifactSize, &record.DownloadCount, &record.LastPublishedBy,
 			&record.SourceRepo, &record.SourceVisibility, &record.HasNativeBinaries,
-			&record.HasInstallScripts, &record.LatestAuditID)
+			&record.HasInstallScripts, &record.LatestAuditID, &record.TreeDigest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return registry.VersionRecord{}, registry.ErrNotFound
 	}

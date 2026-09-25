@@ -2,7 +2,8 @@
   "commands": [
     "rivet import npm:prettier",
     "rivet inspect prettier",
-    "rivet run prettier --version"
+    "rivet run prettier --version",
+    "rivet verify prettier"
   ],
   "example": "npm-import-prettier",
   "generated_by": "tools/workspace/workspace.py sync",

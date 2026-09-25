@@ -10,8 +10,19 @@
       "version": "0.1.0"
     },
     {
-      "expected_state": "quarantined",
-      "expected_verdict": "high",
+      "expected_state": "blocked",
+      "expected_verdict": "critical",
+      "has_bin": false,
+      "name": "rivet-fixture-credential-stealer",
+      "path": "fixtures/packages/credential-stealer",
+      "scripts": [
+        "postinstall"
+      ],
+      "version": "0.1.0"
+    },
+    {
+      "expected_state": "warned",
+      "expected_verdict": "medium",
       "has_bin": true,
       "name": "rivet-fixture-risky-postinstall",
       "path": "fixtures/packages/risky-postinstall",

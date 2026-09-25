@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rivet.dev/rivet-attestation.schema.json",
+  "title": "Rivet Release Attestation",
+  "description": "Envelope served by the registry. The signature is Ed25519 over \"rivet-attestation-v1\\n\" followed by the base64-decoded payload, which is a release statement ($defs/statement).",
+  "type": "object",
+  "required": ["payload_type", "payload", "keyid", "signature"],
+  "properties": {
+    "payload_type": { "const": "application/vnd.rivet.release+json" },
+    "payload": { "type": "string", "contentEncoding": "base64", "contentMediaType": "application/json" },
+    "keyid": { "type": "string", "pattern": "^ed25519:[0-9a-f]{32}$" },
+    "signature": { "type": "string", "contentEncoding": "base64" }
+  },
+  "$defs": {
+    "statement": {
+      "type": "object",
+      "required": ["_type", "name", "version", "source", "state", "artifact", "manifest", "published_at", "issued_at", "expires_at"],
+      "properties": {
+        "_type": { "const": "https://rivet.dev/attestation/release/v1" },
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "source": { "enum": ["npm", "native"] },
+        "state": { "enum": ["pending", "active", "warned", "quarantined", "yanked", "revoked", "blocked", "archived"] },
+        "artifact": {
+          "type": "object",
+          "required": ["hash", "size", "tree_digest"],
+          "properties": {
+            "hash": { "type": "string", "pattern": "^sha512-[0-9a-f]{128}$" },
+            "size": { "type": "integer" },
+            "tree_digest": { "type": "string", "pattern": "^rivet-tree-v1:sha256:[0-9a-f]{64}$" }
+          }
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Normalized from the tarball's own package.json (what actually runs).",
+          "properties": {
+            "dependencies": { "type": "object", "additionalProperties": { "type": "string" } },
+            "optional_dependencies": { "type": "object", "additionalProperties": { "type": "string" } },
+            "peer_dependencies": { "type": "object", "additionalProperties": { "type": "string" } },
+            "peer_optional": { "type": "array", "items": { "type": "string" } },
+            "bin": { "type": "object", "additionalProperties": { "type": "string" } },
+            "os": { "type": "array", "items": { "type": "string" } },
+            "cpu": { "type": "array", "items": { "type": "string" } },
+            "install_scripts": { "type": "object", "additionalProperties": { "type": "string" } },
+            "deprecated": { "type": "boolean" }
+          }
+        },
+        "upstream": {
+          "type": "object",
+          "properties": {
+            "integrity_algorithm": { "enum": ["sha512", "sha1"] },
+            "manifest_mismatch": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": { "enum": ["verified", "absent", "invalid", "unverifiable"] },
+            "source_repo": { "type": "string" },
+            "source_commit": { "type": "string" },
+            "repo_matches": { "type": "boolean" }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "required": ["id", "verdict", "risk_score", "sandbox_runtime"],
+          "properties": {
+            "verdict": { "enum": ["low", "medium", "high", "critical"] },
+            "risk_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "sandbox_runtime": { "enum": ["gvisor/runsc", "none/static-analysis"] },
+            "capabilities": { "type": "array", "items": { "type": "string" } },
+            "diff": { "type": "object" }
+          }
+        },
+        "issued_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

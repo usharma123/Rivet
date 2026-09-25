@@ -9,26 +9,163 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   workspace:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: make workspace-check
       - run: make docs-check
 
   product:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: workspace
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: product
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version-file: registry/go.mod
+          cache: false
+      # Cache entries are immutable; each job must save its own build cache.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install bubblewrap for the Linux sandbox tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 blocks unprivileged user namespaces via AppArmor;
+          # bubblewrap needs them to build the sandbox.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: make cli-test
       - run: make cli-clippy
       - run: make fmt-check
       - run: make registry-test
+      - run: make audit-agent-check
+
+  e2e:
+    # Live run against registry.npmjs.org in both placements (temp dir and
+    # under $HOME), exercising the real bubblewrap sandbox end to end.
+    runs-on: ubuntu-24.04
+    needs: workspace
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: e2e
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
+        with:
+          go-version-file: registry/go.mod
+          cache: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install bubblewrap for the Linux sandbox tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 blocks unprivileged user namespaces via AppArmor;
+          # bubblewrap needs them to build the sandbox.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Live npm end-to-end checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RIVET_E2E_LOG_DIR"
+          make e2e 2>&1 | tee "$RUNNER_TEMP/e2e-console.log"
+        env:
+          RIVET_E2E_BENCH_OUT: ${{ runner.temp }}/bench.jsonl
+          RIVET_E2E_LOG_DIR: ${{ runner.temp }}/e2e-logs
+      - name: Run-time benchmark
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/bench.jsonl" ]; then cat "$RUNNER_TEMP/bench.jsonl"; fi
+      - name: Upload end-to-end logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-logs-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/e2e-console.log
+            ${{ runner.temp }}/bench.jsonl
+            ${{ runner.temp }}/e2e-logs/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  postgres:
+    runs-on: ubuntu-24.04
+    needs: workspace
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rivet
+          POSTGRES_PASSWORD: rivet
+          POSTGRES_DB: rivet_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rivet" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
+        with:
+          go-version-file: registry/go.mod
+          cache: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-
+      - run: make registry-test-postgres
+        env:
+          RIVET_TEST_DATABASE_URL: postgres://rivet:rivet@localhost:5432/rivet_test?sslmode=disable
