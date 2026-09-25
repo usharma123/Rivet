@@ -1,33 +1,41 @@
 package audit
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"strings"
 
 	"github.com/usharma123/rivet/registry/internal/registry"
+	"github.com/usharma123/rivet/registry/internal/signing"
 )
 
-func SignAudit(audit registry.AuditRecord, secret string) (string, error) {
-	clone := audit
-	clone.Signature = ""
-	payload, err := json.Marshal(clone)
+// SignAudit signs the audit record (minus its signature) with the registry's
+// Ed25519 key. The result is "<keyid>|<base64 signature>".
+func SignAudit(audit registry.AuditRecord, signer *signing.Signer) (string, error) {
+	payload, err := auditPayload(audit)
 	if err != nil {
 		return "", err
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
-	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil)), nil
+	return signer.KeyID() + "|" + signer.SignBytes(payload), nil
 }
 
-func VerifyAuditSignature(audit registry.AuditRecord, secret string) bool {
-	if audit.Signature == "" {
+// VerifyAuditSignature checks that the audit was signed by signer and has not
+// been modified since.
+func VerifyAuditSignature(audit registry.AuditRecord, signer *signing.Signer) bool {
+	keyID, signature, ok := strings.Cut(audit.Signature, "|")
+	if !ok || keyID != signer.KeyID() {
 		return false
 	}
-	expected, err := SignAudit(audit, secret)
+	payload, err := auditPayload(audit)
 	if err != nil {
 		return false
 	}
-	return hmac.Equal([]byte(expected), []byte(audit.Signature))
+	return signer.VerifyBytes(payload, signature)
+}
+
+func auditPayload(audit registry.AuditRecord) ([]byte, error) {
+	clone := audit
+	clone.Signature = ""
+	clone.ID = ""
+	clone.ReleaseStateApplied = ""
+	return json.Marshal(clone)
 }

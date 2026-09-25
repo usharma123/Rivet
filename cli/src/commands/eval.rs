@@ -3,11 +3,13 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::core::{
+    attestation::Statement,
     byok::ByokConfig,
     output::{emit_many, Event, OutputMode},
     registry_client::RegistryClient,
-    risk::{combine_risk, RiskLevel},
-    store::{LocalStore, StoredPackage},
+    risk::namesquat,
+    store::LocalStore,
+    trust,
 };
 use crate::CommonFlags;
 
@@ -17,8 +19,12 @@ pub fn run(package: String, provider: String, flags: CommonFlags) -> Result<()> 
         bail!("BYOK provider {provider} is not configured; run `rivet byok add {provider}`");
     }
     let (name, version) = parse_package_version(&package)?;
-    let store = LocalStore::from_env()?;
-    let stored = store.read_package(&name, Some(&version)).ok();
+    let registry = RegistryClient::from_env()?;
+    let store = LocalStore::open(registry.base_url())?;
+    let key = trust::trusted_key(&registry)?;
+    let stored = store
+        .cached_attestation(&name, &version, &key)?
+        .map(|(statement, _)| statement);
     let result = deterministic_eval(&name, stored.as_ref());
     let privacy = privacy_summary();
 
@@ -53,7 +59,6 @@ pub fn run(package: String, provider: String, flags: CommonFlags) -> Result<()> 
         return Ok(());
     }
 
-    let registry = RegistryClient::from_env()?;
     let request = EvalRequest {
         package: name,
         version,
@@ -101,36 +106,45 @@ struct EvalRequest {
     privacy_summary: serde_json::Value,
 }
 
-fn deterministic_eval(name: &str, package: Option<&StoredPackage>) -> EvalResult {
-    let (base_score, base_reasons) = package
-        .map(|package| (package.risk_score, package.risk_reasons.clone()))
+/// Advisory local eval (BYOK stub). It starts from the registry's signed
+/// audit when one is cached; it never overrides the registry verdict.
+fn deterministic_eval(name: &str, statement: Option<&Statement>) -> EvalResult {
+    let (mut score, mut reasons) = statement
+        .and_then(|s| s.audit.as_ref())
+        .map(|audit| (audit.risk_score, audit.reasons.clone()))
         .unwrap_or_else(|| {
             (
                 20,
                 vec!["package metadata not available locally".to_string()],
             )
         });
-    let risk = combine_risk(base_score, &base_reasons, name);
-    let verdict = match risk.level {
-        RiskLevel::Low => "low",
-        RiskLevel::Medium => "medium",
-        RiskLevel::High => "high",
-        RiskLevel::Critical => "critical",
+    if let Some(squat) = namesquat(name) {
+        score = score.saturating_add(30);
+        reasons.push(format!(
+            "possible namesquat: confusable with {}",
+            squat.confusable_with
+        ));
     }
-    .to_string();
-    let suggested_actions = match risk.level {
-        RiskLevel::Low => vec!["allow_install".to_string()],
-        RiskLevel::Medium => vec!["warn_user".to_string(), "request_audit".to_string()],
-        RiskLevel::High => vec!["publish_warned".to_string(), "request_audit".to_string()],
-        RiskLevel::Critical => vec![
+    let score = score.min(100);
+    let verdict = match score {
+        0..=29 => "low",
+        30..=59 => "medium",
+        60..=79 => "high",
+        _ => "critical",
+    };
+    let suggested_actions = match verdict {
+        "low" => vec!["allow_install".to_string()],
+        "medium" => vec!["warn_user".to_string(), "request_audit".to_string()],
+        "high" => vec!["publish_warned".to_string(), "request_audit".to_string()],
+        _ => vec![
             "quarantine_release".to_string(),
             "block_install".to_string(),
         ],
     };
     EvalResult {
-        verdict,
-        risk_score: risk.score as u16,
-        reasons: risk.reasons,
+        verdict: verdict.to_string(),
+        risk_score: score,
+        reasons,
         suggested_actions,
     }
 }

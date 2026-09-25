@@ -1,194 +1,171 @@
 #!/usr/bin/env node
+// Rivet dynamic audit agent. Runs inside gVisor with --network=none and a
+// read-only root. It executes the package's install scripts, loads its entry
+// point, and runs its executables with honeytoken credentials planted, then
+// writes what it observed to evidence.json. Static analysis is done by the
+// registry itself and is not repeated here.
+"use strict";
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const artifactPath = "/artifact/package.tgz";
-const workDir = "/evidence/work";
-let packageDir = path.join(workDir, "package");
-const evidencePath = "/evidence/evidence.json";
+const artifactPath = process.env.RIVET_ARTIFACT_PATH || "/artifact/package.tgz";
+const canonicalPackage = process.env.RIVET_CANONICAL_PACKAGE_DIR || "/artifact/package";
+const manifestPath = process.env.RIVET_MANIFEST_PATH || "/audit/manifest.json";
+const evidenceDir = process.env.RIVET_EVIDENCE_DIR || "/evidence";
+const workDir = process.env.RIVET_WORK_DIR || path.join(os.tmpdir(), "rivet-work");
+const hookPath = path.join(__dirname, "egress-hook.js");
+const safeTimeout = Number(process.env.RIVET_SAFE_TIMEOUT_MS || 30000);
+const adversarialTimeout = Number(process.env.RIVET_ADVERSARIAL_TIMEOUT_MS || 120000);
 
-async function main() {
+const HONEY_ENV = {
+  NPM_TOKEN: "npm_RIVETHONEYTOKEN0000000000000000000000",
+  NODE_AUTH_TOKEN: "npm_RIVETHONEYTOKEN0000000000000000000001",
+  GITHUB_TOKEN: "ghp_RIVETHONEYTOKEN000000000000000000000000",
+  AWS_ACCESS_KEY_ID: "AKIARIVETHONEYTOKEN0",
+  AWS_SECRET_ACCESS_KEY: "rivet/honeytoken/secret/access/key/000000",
+};
+
+function main() {
   fs.rmSync(workDir, { recursive: true, force: true });
   fs.mkdirSync(workDir, { recursive: true });
-  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  const egressLog = path.join(workDir, "egress.jsonl");
+  const home = plantHoneytokens(path.join(workDir, "home"));
 
-  const extract = spawnSync("tar", [
-    "--extract",
-    "--gzip",
-    "--file",
-    artifactPath,
-    "--directory",
-    workDir,
-    "--touch",
-    "--no-same-owner",
-    "--no-same-permissions",
-  ], {
-    encoding: "utf8",
-    timeout: 30000,
-  });
   const evidence = {
-    static: {
-      artifact_size: fileSize(artifactPath),
-      has_install_scripts: false,
-      install_scripts: [],
-      has_native_binaries: false,
-      native_binaries: [],
-      minified_files: [],
-      obfuscated_files: [],
-      source_visibility: "unknown",
-      source_repo: "",
-      namesquat_warning: "",
-    },
     safe_probes: [],
     adversarial_probes: [],
     egress: [],
-    privacy: {
-      will_send: [
-        "package manifest",
-        "dependency summary",
-        "executable metadata",
-        "install scripts",
-        "release diff",
-        "selected suspicious snippets",
-      ],
-      will_not_send: [
-        ".env files",
-        "registry tokens",
-        "git credentials",
-        "private project files",
-        "shell history",
-      ],
-    },
-    sandbox: {
-      runtime: "gvisor/runsc",
-      network: "rivet-audit-net",
-      direct_internet: "denied_by_policy",
-    },
-    agent: {
-      name: "rivet-audit-agent",
-      version: "0.1.0",
-    },
+    honeytokens: [],
+    agent: { name: "rivet-audit-agent", version: "2", node: process.version },
   };
 
-  if (extract.status !== 0) {
-    evidence.safe_probes.push({
-      name: "extract",
-      command: "tar -xzf package.tgz",
-      exit_code: extract.status ?? 1,
-      timeout: false,
-      output: redact(`${extract.stdout}\n${extract.stderr}`),
+  let packageDir;
+  let manifest;
+  if (fs.existsSync(canonicalPackage)) {
+    packageDir = path.join(workDir, "package");
+    fs.cpSync(canonicalPackage, packageDir, { recursive: true });
+    manifest = readJson(manifestPath);
+    if (!manifest.name || !manifest.version) throw new Error("authoritative audit manifest is missing");
+  } else {
+    // Local agent fixtures retain the raw-tar entry point. DockerRunner always
+    // mounts the registry's canonical tree and normalized manifest.
+    const extract = spawnSync("tar", ["-xzf", artifactPath, "-C", workDir, "--no-same-owner", "--no-same-permissions"], {
+      encoding: "utf8",
+      timeout: 30000,
     });
-    writeEvidence(evidence);
-    return;
-  }
-  if (!fs.existsSync(packageDir)) {
-    packageDir = workDir;
+    if (extract.status !== 0) {
+      evidence.safe_probes.push(probeResult("extract", "tar -xzf package.tgz", extract));
+      throw new Error("raw fixture extraction failed");
+    }
+    packageDir = findPackageDir(workDir);
+    manifest = readJson(path.join(packageDir, "package.json"));
   }
 
-  const manifest = readJson(path.join(packageDir, "package.json"));
-  scanStatic(packageDir, manifest, evidence);
-  runSafeProbes(packageDir, manifest, evidence);
-  runAdversarialProbes(packageDir, manifest, evidence);
-  await callAuditProxy(evidence);
+  const env = {
+    PATH: "/usr/local/bin:/usr/bin:/bin",
+    HOME: home.dir,
+    CI: "true",
+    GITHUB_ACTIONS: "true",
+    npm_lifecycle_event: "",
+    NODE_OPTIONS: `--require ${hookPath}`,
+    RIVET_EGRESS_LOG: egressLog,
+    RIVET_HONEYTOKEN_PATHS: home.paths.join(":"),
+    RIVET_HONEYTOKEN_ENV: Object.keys(HONEY_ENV).join(","),
+    ...HONEY_ENV,
+  };
+
+  const scripts = manifest.install_scripts || manifest.scripts || {};
+  for (const name of ["preinstall", "install", "postinstall"]) {
+    if (typeof scripts[name] !== "string" || !scripts[name]) continue;
+    const result = run("script:" + name, "sh", ["-c", scripts[name]], packageDir, { ...env, npm_lifecycle_event: name }, adversarialTimeout);
+    evidence.adversarial_probes.push(result);
+  }
+  const requireProbe = run("require", process.execPath, ["-e", "require(process.argv[1])", packageDir], workDir, env, safeTimeout);
+  evidence.adversarial_probes.push(requireProbe);
+  for (const [command, entry] of Object.entries(binEntries(manifest))) {
+    const full = path.join(packageDir, String(entry).replace(/^\.\//, ""));
+    if (!full.startsWith(packageDir + path.sep)) continue;
+    for (const flag of ["--version", "--help"]) {
+      evidence.safe_probes.push(run(`${flag.slice(2)}:${command}`, process.execPath, [full, flag], packageDir, env, safeTimeout));
+    }
+  }
+
+  for (const entry of readJsonLines(egressLog)) {
+    if (entry.kind === "egress") {
+      evidence.egress.push({
+        host: String(entry.host || "").slice(0, 255),
+        port: Number(entry.port || 0),
+        protocol: String(entry.protocol || ""),
+        bytes: 0,
+        decision: "blocked",
+        probe: entry.probe,
+      });
+    } else if (entry.kind === "honeytoken") {
+      evidence.honeytokens.push({ token: String(entry.token), probe: entry.probe, how: entry.how });
+    } else if (entry.kind === "process") {
+      evidence.adversarial_probes.push({ name: "spawned:" + entry.probe, command: String(entry.command).slice(0, 400), exit_code: 0, timeout: false });
+    }
+  }
+  evidence.egress = dedupe(evidence.egress, (e) => `${e.probe}|${e.host}|${e.port}|${e.protocol}`).slice(0, 50);
+  evidence.honeytokens = dedupe(evidence.honeytokens, (h) => `${h.probe}|${h.token}`).slice(0, 50);
+  const hasTarget = Object.keys(scripts).some((name) => ["preinstall", "install", "postinstall"].includes(name)) || Object.keys(binEntries(manifest)).length > 0 || requireProbe.exit_code === 0;
+  evidence.agent.complete = hasTarget ? "true" : "false";
   writeEvidence(evidence);
 }
 
-function scanStatic(root, manifest, evidence) {
-  const scripts = manifest.scripts || {};
-  for (const name of ["preinstall", "install", "postinstall"]) {
-    if (scripts[name]) {
-      evidence.static.install_scripts.push(name);
-    }
+function plantHoneytokens(dir) {
+  const files = {
+    ".npmrc": `//registry.npmjs.org/:_authToken=${HONEY_ENV.NPM_TOKEN}\n`,
+    ".ssh/id_rsa": "-----BEGIN OPENSSH PRIVATE KEY-----\nrivet-honeytoken\n-----END OPENSSH PRIVATE KEY-----\n",
+    ".ssh/id_ed25519": "-----BEGIN OPENSSH PRIVATE KEY-----\nrivet-honeytoken\n-----END OPENSSH PRIVATE KEY-----\n",
+    ".aws/credentials": `[default]\naws_access_key_id = ${HONEY_ENV.AWS_ACCESS_KEY_ID}\naws_secret_access_key = ${HONEY_ENV.AWS_SECRET_ACCESS_KEY}\n`,
+    ".config/gh/hosts.yml": `github.com:\n  oauth_token: ${HONEY_ENV.GITHUB_TOKEN}\n`,
+    ".git-credentials": `https://rivet:${HONEY_ENV.GITHUB_TOKEN}@github.com\n`,
+    ".docker/config.json": '{"auths":{"https://index.docker.io/v1/":{"auth":"cml2ZXQ6aG9uZXl0b2tlbg=="}}}\n',
+  };
+  const paths = [];
+  for (const [relative, content] of Object.entries(files)) {
+    const full = path.join(dir, relative);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content, { mode: 0o600 });
+    paths.push(full);
   }
-  evidence.static.has_install_scripts = evidence.static.install_scripts.length > 0;
-  evidence.static.source_repo = sourceRepo(manifest);
-  evidence.static.source_visibility = evidence.static.source_repo ? "open" : "unknown";
-
-  for (const file of walk(root)) {
-    const rel = path.relative(root, file);
-    if (/\.(node|dll|dylib|so|exe)$/i.test(rel)) {
-      evidence.static.native_binaries.push(rel);
-    }
-    if (/\.(js|cjs|mjs)$/i.test(rel)) {
-      const text = fs.readFileSync(file, "utf8").slice(0, 256000);
-      if (looksMinified(text)) evidence.static.minified_files.push(rel);
-      if (looksObfuscated(text)) evidence.static.obfuscated_files.push(rel);
-    }
-  }
-  evidence.static.has_native_binaries = evidence.static.native_binaries.length > 0;
+  paths.push(path.join(dir, ".ssh"), path.join(dir, ".aws"));
+  return { dir, paths };
 }
 
-function runSafeProbes(root, manifest, evidence) {
-  const bins = binEntries(manifest);
-  for (const [command, entry] of Object.entries(bins)) {
-    const full = path.join(root, entry.replace(/^\.\//, ""));
-    evidence.safe_probes.push(runProbe("version:" + command, full, ["--version"], 30000));
-    evidence.safe_probes.push(runProbe("help:" + command, full, ["--help"], 30000));
-  }
+function run(name, command, args, cwd, env, timeout) {
+  const result = spawnSync(command, args, { cwd, env: { ...env, RIVET_PROBE_NAME: name }, encoding: "utf8", timeout, maxBuffer: 256 * 1024 });
+  return probeResult(name, [path.basename(command), ...args].join(" "), result);
 }
 
-function runAdversarialProbes(root, manifest, evidence) {
-  const scripts = manifest.scripts || {};
-  for (const name of ["preinstall", "install", "postinstall"]) {
-    if (!scripts[name]) continue;
-    evidence.adversarial_probes.push(
-      runProbe("script:" + name, "npm", ["run", name, "--ignore-scripts"], 120000, root),
-    );
-  }
-}
-
-function runProbe(name, executable, args, timeout, cwd = packageDir) {
-  const command = /\.[cm]?js$/i.test(executable) ? "node" : executable;
-  const finalArgs = command === "node" ? [executable, ...args] : args;
-  const result = spawnSync(command, finalArgs, {
-    cwd,
-    encoding: "utf8",
-    timeout,
-    maxBuffer: 128 * 1024,
-  });
+function probeResult(name, command, result) {
   return {
     name,
-    command: [command, ...finalArgs].join(" "),
-    exit_code: result.status ?? (result.error ? 1 : 0),
+    command: command.slice(0, 400),
+    exit_code: result.status ?? 1,
     timeout: result.error?.code === "ETIMEDOUT",
-    output: redact(`${result.stdout || ""}\n${result.stderr || ""}`).slice(0, 4096),
+    output: redact(`${result.stdout || ""}\n${result.stderr || ""}`).slice(0, 2048),
   };
 }
 
-async function callAuditProxy(evidence) {
-  const url = process.env.RIVET_AUDIT_PROXY_URL;
-  const token = process.env.RIVET_AUDIT_TOKEN;
-  if (!url || !token || typeof fetch !== "function") return;
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-rivet-audit-token": token,
-      },
-      body: JSON.stringify({
-        package: process.env.RIVET_PACKAGE_NAME,
-        version: process.env.RIVET_PACKAGE_VERSION,
-        evidence,
-      }),
-    });
-    evidence.agent.proxy_status = String(response.status);
-  } catch (error) {
-    evidence.egress.push({
-      host: "audit-proxy",
-      port: 443,
-      protocol: "https",
-      bytes: 0,
-      decision: "blocked",
-    });
-    evidence.agent.proxy_error = redact(String(error.message || error));
+function findPackageDir(root) {
+  const entries = fs.readdirSync(root).filter((name) => name !== "home" && name !== "egress.jsonl");
+  if (entries.length === 1 && fs.statSync(path.join(root, entries[0])).isDirectory()) {
+    return path.join(root, entries[0]);
   }
+  return root;
 }
 
-function writeEvidence(evidence) {
-  fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+function binEntries(manifest) {
+  if (!manifest.bin) return {};
+  if (typeof manifest.bin === "string") {
+    return { [String(manifest.name || "package").split("/").pop()]: manifest.bin };
+  }
+  return manifest.bin;
 }
 
 function readJson(file) {
@@ -199,80 +176,51 @@ function readJson(file) {
   }
 }
 
-function binEntries(manifest) {
-  if (!manifest.bin) return {};
-  if (typeof manifest.bin === "string") {
-    return { [manifest.name || "package"]: manifest.bin };
-  }
-  return manifest.bin;
-}
-
-function sourceRepo(manifest) {
-  const repo = manifest.repository;
-  if (typeof repo === "string") return repo;
-  if (repo && typeof repo.url === "string") return repo.url;
-  return "";
-}
-
-function walk(root) {
-  const out = [];
-  for (const name of fs.readdirSync(root)) {
-    const file = path.join(root, name);
-    const stat = fs.statSync(file);
-    if (stat.isDirectory()) out.push(...walk(file));
-    else out.push(file);
-  }
-  return out;
-}
-
-function looksMinified(text) {
-  const lines = text.split(/\r?\n/);
-  const longLines = lines.filter((line) => line.length > 500).length;
-  return longLines >= 3 || text.length > 10000 && lines.length < 20;
-}
-
-function looksObfuscated(text) {
-  return /eval\s*\(|Function\s*\(|atob\s*\(|\\x[0-9a-fA-F]{2}/.test(text);
-}
-
-function fileSize(file) {
+function readJsonLines(file) {
   try {
-    return fs.statSync(file).size;
+    return fs
+      .readFileSync(file, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
   } catch {
-    return 0;
+    return [];
   }
+}
+
+function dedupe(items, key) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const k = key(item);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 function redact(text) {
-  return text
-    .replace(/(RIVET_REGISTRY_TOKEN|RIVET_AUDIT_TOKEN|API_KEY)=\S+/g, "$1=[REDACTED]")
-    .replace(/sk-[A-Za-z0-9_-]{10,}/g, "sk-[REDACTED]");
+  let out = text;
+  for (const value of Object.values(HONEY_ENV)) out = out.split(value).join("[HONEYTOKEN]");
+  return out.replace(/(RIVET_REGISTRY_TOKEN|API_KEY)=\S+/g, "$1=[REDACTED]");
 }
 
-main().catch((error) => {
-  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
-  fs.writeFileSync(
-    evidencePath,
-    JSON.stringify(
-      {
-        static: {
-          artifact_size: fileSize(artifactPath),
-          has_install_scripts: false,
-          has_native_binaries: false,
-          source_visibility: "unknown",
-        },
-        safe_probes: [
-          {
-            name: "agent",
-            exit_code: 1,
-            timeout: false,
-            output: redact(String(error && error.stack ? error.stack : error)),
-          },
-        ],
-      },
-      null,
-      2,
-    ),
-  );
+function writeEvidence(evidence) {
+  fs.mkdirSync(evidenceDir, { recursive: true });
+  fs.writeFileSync(path.join(evidenceDir, "evidence.json"), JSON.stringify(evidence, null, 2));
+}
+
+try {
+  main();
+} catch (error) {
+  writeEvidence({
+    safe_probes: [{ name: "agent", exit_code: 1, timeout: false, output: redact(String(error && error.stack ? error.stack : error)) }],
+  });
   process.exitCode = 1;
-});
+}

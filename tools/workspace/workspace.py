@@ -304,22 +304,29 @@ def compare_snapshot_map(expected: dict[Path, dict[str, Any]], label: str) -> li
 
 
 def cli_commands_from_source() -> list[str]:
+    """Top-level commands from `enum Command`, expanding any command backed
+    by a `<Name>Command` subcommand enum into "<name> <sub>" entries."""
     source = read_text(ROOT / "cli" / "src" / "lib.rs")
-    command_block = source.split("pub enum Command", 1)[1].split("pub enum ByokCommand", 1)[0]
-    commands = [
-        command
-        for command in (
-            match.group(1).lower()
-            for match in re.finditer(r"^\s{4}([A-Z][A-Za-z]+)\s*(?:\{|,)", command_block, re.M)
-        )
-        if command != "byok"
-    ]
-    byok_block = source.split("pub enum ByokCommand", 1)[1].split("#[derive", 1)[0]
-    byok_commands = [
-        "byok " + match.group(1).lower()
-        for match in re.finditer(r"^\s{4}([A-Z][A-Za-z]+)\s*(?:\{|,)", byok_block, re.M)
-    ]
-    return sorted(commands + byok_commands)
+    variant = re.compile(r"^\s{4}([A-Z][A-Za-z]+)\s*(?:\{|,)", re.M)
+
+    def enum_variants(name: str) -> list[str]:
+        body = source.split(f"pub enum {name} {{", 1)[1]
+        body = body.split("\n}\n", 1)[0]
+        return [match.group(1) for match in variant.finditer(body)]
+
+    subcommand_enums = {
+        match.group(1).lower(): match.group(0).split()[-1]
+        for match in re.finditer(r"pub enum ([A-Z][A-Za-z]+)Command\b", source)
+        if match.group(1)
+    }
+    commands: list[str] = []
+    for name in enum_variants("Command"):
+        lowered = name.lower()
+        if lowered in subcommand_enums:
+            commands.extend(f"{lowered} {sub.lower()}" for sub in enum_variants(subcommand_enums[lowered]))
+        else:
+            commands.append(lowered)
+    return sorted(commands)
 
 
 def commands_from_markdown(path: Path) -> list[str]:

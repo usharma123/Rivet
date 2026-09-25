@@ -3,7 +3,21 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
+
+// CheckLegacyReleases stops startup after a pre-digest schema upgrade. Those
+// releases cannot be attested safely until their stored artifacts are migrated.
+func CheckLegacyReleases(ctx context.Context, conn *sql.DB) error {
+	var count int
+	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM package_versions WHERE tree_digest IS NULL OR tree_digest = ''`).Scan(&count); err != nil {
+		return err
+	}
+	if count != 0 {
+		return fmt.Errorf("%d legacy releases lack canonical tree digests; migrate their verified artifacts or reset this development registry before startup", count)
+	}
+	return nil
+}
 
 func Migrate(ctx context.Context, conn *sql.DB) error {
 	_, err := conn.ExecContext(ctx, `
@@ -41,6 +55,8 @@ ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS source_visibility TEXT DEF
 ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS has_native_binaries BOOLEAN DEFAULT false;
 ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS has_install_scripts BOOLEAN DEFAULT false;
 ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS latest_verified_audit_id TEXT;
+ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS tree_digest TEXT;
+ALTER TABLE package_versions ALTER COLUMN state SET DEFAULT 'pending';
 
 CREATE TABLE IF NOT EXISTS executables (
   id TEXT PRIMARY KEY,

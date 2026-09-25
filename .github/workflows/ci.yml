@@ -28,7 +28,70 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: registry/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install bubblewrap for the Linux sandbox tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 blocks unprivileged user namespaces via AppArmor;
+          # bubblewrap needs them to build the sandbox.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: make cli-test
       - run: make cli-clippy
       - run: make fmt-check
       - run: make registry-test
+      - run: make audit-agent-check
+
+  e2e:
+    # Live run against registry.npmjs.org in both placements (temp dir and
+    # under $HOME), exercising the real bubblewrap sandbox end to end.
+    runs-on: ubuntu-latest
+    needs: product
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install bubblewrap for the Linux sandbox tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 blocks unprivileged user namespaces via AppArmor;
+          # bubblewrap needs them to build the sandbox.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: make e2e
+        env:
+          RIVET_E2E_BENCH_OUT: ${{ runner.temp }}/bench.jsonl
+      - name: Run-time benchmark
+        if: always()
+        run: cat "${{ runner.temp }}/bench.jsonl" || true
+
+  postgres:
+    runs-on: ubuntu-latest
+    needs: workspace
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rivet
+          POSTGRES_PASSWORD: rivet
+          POSTGRES_DB: rivet_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rivet" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: registry/go.mod
+      - run: make registry-test-postgres
+        env:
+          RIVET_TEST_DATABASE_URL: postgres://rivet:rivet@localhost:5432/rivet_test?sslmode=disable

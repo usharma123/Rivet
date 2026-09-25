@@ -1,5 +1,5 @@
 [package]
-name = "hello-cli"
+name = "@rivet-examples/hello-cli"
 version = "0.1.0"
 description = "Example Rivet package"
 license = "MIT"

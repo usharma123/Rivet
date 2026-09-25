@@ -10,6 +10,9 @@ import (
 type ReleaseState string
 
 const (
+	// StatePending marks a release that has not passed a registry audit yet.
+	// Pending releases are never served as installable.
+	StatePending     ReleaseState = "pending"
 	StateActive      ReleaseState = "active"
 	StateWarned      ReleaseState = "warned"
 	StateQuarantined ReleaseState = "quarantined"
@@ -23,7 +26,34 @@ var (
 	ErrNotFound       = errors.New("not found")
 	ErrPolicy         = errors.New("release policy denied")
 	ErrInvalidRequest = errors.New("invalid request")
+	// ErrConflict is returned when a published version would change content.
+	ErrConflict = errors.New("version is immutable")
 )
+
+// Sandbox runtimes recorded on audits.
+const (
+	SandboxGVisor = "gvisor/runsc"
+	SandboxStatic = "none/static-analysis"
+)
+
+// PackageManifest is the registry's normalized view of a package manifest.
+// It is embedded in signed attestations, so clients resolve dependencies from
+// signed data rather than from files inside the tarball.
+type PackageManifest struct {
+	Name                 string            `json:"name"`
+	Version              string            `json:"version"`
+	Description          string            `json:"description,omitempty"`
+	Dependencies         map[string]string `json:"dependencies,omitempty"`
+	OptionalDependencies map[string]string `json:"optional_dependencies,omitempty"`
+	PeerDependencies     map[string]string `json:"peer_dependencies,omitempty"`
+	PeerOptional         []string          `json:"peer_optional,omitempty"`
+	Bin                  map[string]string `json:"bin,omitempty"`
+	OS                   []string          `json:"os,omitempty"`
+	CPU                  []string          `json:"cpu,omitempty"`
+	InstallScripts       map[string]string `json:"install_scripts,omitempty"`
+	Deprecated           bool              `json:"deprecated,omitempty"`
+	Repository           string            `json:"repository,omitempty"`
+}
 
 type PackageRecord struct {
 	Name      string          `json:"name"`
@@ -41,6 +71,7 @@ type VersionRecord struct {
 	Manifest           json.RawMessage `json:"manifest"`
 	ArtifactHash       string          `json:"artifact_hash"`
 	ArtifactURL        string          `json:"artifact_url"`
+	TreeDigest         string          `json:"tree_digest,omitempty"`
 	Publisher          string          `json:"publisher,omitempty"`
 	SourceMetadata     json.RawMessage `json:"source_metadata,omitempty"`
 	PublishedAt        time.Time       `json:"published_at"`
@@ -120,22 +151,14 @@ type AuditRecord struct {
 	ReleaseStateApplied ReleaseState    `json:"release_state_applied,omitempty"`
 }
 
+// PublishRequest is what a native publisher may assert. Risk, state, sizes,
+// scripts and binaries are always derived by the registry from the artifact.
 type PublishRequest struct {
-	Source            string          `json:"source"`
-	Publisher         string          `json:"publisher,omitempty"`
-	State             ReleaseState    `json:"state,omitempty"`
-	Manifest          json.RawMessage `json:"manifest"`
-	ArtifactHash      string          `json:"artifact_hash"`
-	ArtifactURL       string          `json:"artifact_url,omitempty"`
-	SourceMetadata    json.RawMessage `json:"source_metadata,omitempty"`
-	Executables       []Executable    `json:"executables,omitempty"`
-	RiskScore         int             `json:"risk_score"`
-	ArtifactSize      int64           `json:"artifact_size"`
-	LastPublishedBy   string          `json:"last_published_by,omitempty"`
-	SourceRepo        string          `json:"source_repo,omitempty"`
-	SourceVisibility  string          `json:"source_visibility,omitempty"`
-	HasNativeBinaries bool            `json:"has_native_binaries"`
-	HasInstallScripts bool            `json:"has_install_scripts"`
+	Publisher    string          `json:"publisher,omitempty"`
+	Manifest     json.RawMessage `json:"manifest"`
+	ArtifactHash string          `json:"artifact_hash"`
+	Executables  []Executable    `json:"executables,omitempty"`
+	SourceRepo   string          `json:"source_repo,omitempty"`
 }
 
 type StateChangeRequest struct {
@@ -160,7 +183,19 @@ type Store interface {
 
 func NormalizeState(state ReleaseState) ReleaseState {
 	if state == "" {
-		return StateActive
+		return StatePending
 	}
 	return state
+}
+
+// Installable reports whether clients may install a release in this state
+// without an explicit unsafe override.
+func (s ReleaseState) Installable() bool {
+	return s == StateActive || s == StateWarned
+}
+
+// Resolvable reports whether the resolver may pick this release for a range.
+// Yanked releases stay installable from lockfiles but are never newly chosen.
+func (s ReleaseState) Resolvable() bool {
+	return s.Installable()
 }

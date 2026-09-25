@@ -12,9 +12,9 @@
       ],
       "path": "audit-agent",
       "public_interfaces": [
-        "gVisor audit container contract",
+        "gVisor audit container contract (no network, honeytokens, egress hook)",
         "signed registry audit evidence shape",
-        "Node and static audit-agent images"
+        "Node dynamic audit-agent image"
       ],
       "release_group": "audit",
       "schemas": [
@@ -27,7 +27,9 @@
     {
       "docs": [
         "README.md",
-        "docs/adr/0004-lockfile-resolver-policy.md"
+        "docs/adr/0004-lockfile-resolver-policy.md",
+        "docs/adr/0007-signed-attestations-and-runtime-sandbox.md",
+        "docs/security-review.md"
       ],
       "id": "cli",
       "kind": "rust-cli",
@@ -37,14 +39,18 @@
       "path": "cli",
       "public_interfaces": [
         "rivet command surface",
-        "rivet.toml project manifest behavior",
-        "rivet.lock project lockfile behavior",
-        "local content-addressed store layout"
+        "rivet.toml project manifest and [policy] behavior",
+        "rivet.lock v2 project lockfile behavior",
+        "local content-addressed store layout",
+        "node_modules virtual-store layout and .bin shims",
+        "registry key pinning (trust on first use)",
+        "run-time sandbox (seatbelt / bubblewrap)"
       ],
       "release_group": "cli",
       "schemas": [
         "schemas/rivet-manifest.schema.json",
         "schemas/rivet-lock.schema.json",
+        "schemas/rivet-attestation.schema.json",
         "schemas/event.schema.json"
       ],
       "validation_commands": [
@@ -91,6 +97,8 @@
       "public_interfaces": [
         "benign npm-compatible package fixture",
         "risky postinstall/native package fixture",
+        "credential-stealer malicious package fixture",
+        "canonical tarball tree-digest vector",
         "fixture catalog snapshots"
       ],
       "release_group": "fixtures",
@@ -102,7 +110,9 @@
     {
       "docs": [
         "README.md",
-        "docs/adr/0006-private-registry-precedence.md"
+        "docs/adr/0006-private-registry-precedence.md",
+        "docs/adr/0007-signed-attestations-and-runtime-sandbox.md",
+        "docs/security-review.md"
       ],
       "id": "registry",
       "kind": "go-service",
@@ -112,11 +122,16 @@
       "path": "registry",
       "public_interfaces": [
         "HTTP /v1 package registry API",
+        "npm mirror and resolver (/v1/npm/resolve, /v1/import/npm)",
+        "Ed25519 signed release attestations (/v1/keys, /v1/attestations)",
+        "canonical tarball tree digest v1",
         "Postgres persistence schema",
-        "dev bearer-token mutation auth"
+        "publisher and admin bearer-token auth"
       ],
       "release_group": "registry",
-      "schemas": [],
+      "schemas": [
+        "schemas/rivet-attestation.schema.json"
+      ],
       "validation_commands": [
         "make registry-test",
         "make registry-fmt-check"
@@ -134,12 +149,14 @@
       "path": "schemas",
       "public_interfaces": [
         "event.schema.json",
+        "rivet-attestation.schema.json",
         "rivet-lock.schema.json",
         "rivet-manifest.schema.json"
       ],
       "release_group": "schemas",
       "schemas": [
         "schemas/event.schema.json",
+        "schemas/rivet-attestation.schema.json",
         "schemas/rivet-lock.schema.json",
         "schemas/rivet-manifest.schema.json"
       ],
@@ -156,7 +173,8 @@
       "make cli-test",
       "make cli-clippy",
       "make fmt-check",
-      "make registry-test"
+      "make registry-test",
+      "make audit-agent-check"
     ],
     "cli_commands": [
       "init",
@@ -171,10 +189,13 @@
       "yank",
       "eval",
       "byok add",
-      "byok list"
+      "byok list",
+      "trust show",
+      "trust reset"
     ],
     "schema_files": [
       "schemas/event.schema.json",
+      "schemas/rivet-attestation.schema.json",
       "schemas/rivet-lock.schema.json",
       "schemas/rivet-manifest.schema.json"
     ]
@@ -186,7 +207,6 @@
       "label": "component:audit",
       "paths": [
         "audit-agent/**",
-        "registry/cmd/audit-agent/**",
         "registry/internal/audit/**"
       ]
     },
@@ -241,7 +261,9 @@
         "rivet.workspace.toml",
         "workspace.snapshot.json",
         "tools/workspace/**",
+        "tools/e2e/**",
         "docs/adr/**",
+        "docs/security-review.md",
         ".github/**",
         "Makefile",
         "README.md"

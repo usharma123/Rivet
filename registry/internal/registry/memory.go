@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ type MemoryStore struct {
 	versions map[string]VersionRecord
 	evals    []EvalRecord
 	audits   map[string]AuditRecord
+	auditSeq int
 	now      func() time.Time
 }
 
@@ -86,24 +88,33 @@ func (s *MemoryStore) Search(_ context.Context, query string) ([]PackageRecord, 
 func (s *MemoryStore) UpsertVersion(_ context.Context, version VersionRecord) (VersionRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := s.now()
-	version.State = NormalizeState(version.State)
-	if err := ValidateReleaseState(version.State); err != nil {
+	if err := ValidateNewVersion(version); err != nil {
 		return VersionRecord{}, err
 	}
+	if existing, ok := s.versions[key(version.Name, version.Version)]; ok {
+		if existing.ArtifactHash != version.ArtifactHash {
+			return VersionRecord{}, fmt.Errorf("%w: %s@%s is already published with different content", ErrConflict, version.Name, version.Version)
+		}
+		return existing, nil
+	}
+	now := s.now()
+	version.State = NormalizeState(version.State)
 	if version.PublishedAt.IsZero() {
-		if old, ok := s.versions[key(version.Name, version.Version)]; ok {
-			version.PublishedAt = old.PublishedAt
-		} else {
-			version.PublishedAt = now
+		version.PublishedAt = now
+	}
+	if version.ArtifactURL == "" {
+		version.ArtifactURL = "/v1/artifacts/" + version.ArtifactHash
+	}
+	if _, ok := s.packages[version.Name]; !ok {
+		s.packages[version.Name] = PackageRecord{
+			Name:      version.Name,
+			Source:    version.Source,
+			Publisher: version.Publisher,
+			CreatedAt: now,
 		}
 	}
-	s.packages[version.Name] = PackageRecord{
-		Name:      version.Name,
-		Source:    version.Source,
-		Publisher: version.Publisher,
-		CreatedAt: now,
-	}
+	version.LatestAudit = nil
+	version.LatestAuditID = ""
 	s.versions[key(version.Name, version.Version)] = version
 	return version, nil
 }
@@ -143,7 +154,8 @@ func (s *MemoryStore) CreateAudit(_ context.Context, audit AuditRecord) (AuditRe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if audit.ID == "" {
-		audit.ID = "audit-" + key(audit.PackageName, audit.Version)
+		s.auditSeq++
+		audit.ID = fmt.Sprintf("audit-%d", s.auditSeq)
 	}
 	if audit.StartedAt.IsZero() {
 		audit.StartedAt = s.now()
@@ -158,7 +170,7 @@ func (s *MemoryStore) CreateAudit(_ context.Context, audit AuditRecord) (AuditRe
 	if !ok {
 		return AuditRecord{}, ErrNotFound
 	}
-	state := StateForVerdict(audit.Verdict)
+	state := StateAfterAudit(record.State, audit.Verdict)
 	audit.ReleaseStateApplied = state
 	record.State = state
 	record.RiskScore = audit.RiskScore
@@ -198,4 +210,12 @@ func (s *MemoryStore) GetLatestAudit(_ context.Context, name, version string) (A
 
 func key(name, version string) string {
 	return name + "@" + version
+}
+
+// ForceVersion overwrites a stored version without policy checks. It exists
+// for tests that need to simulate release age and download counts.
+func (s *MemoryStore) ForceVersion(version VersionRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.versions[key(version.Name, version.Version)] = version
 }

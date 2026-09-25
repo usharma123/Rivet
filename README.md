@@ -1,26 +1,42 @@
 # Rivet
 
-Rivet is a package manager, registry, and executable trust layer for visible, auditable, reversible package installation and execution.
-
-The first MVP slice proves this flow:
+Rivet is a package manager, registry and execution trust layer for npm packages. It installs existing npm packages (full dependency trees, native optional dependencies, peers and aliases), but every package is mirrored, verified, audited and signed by the registry before it can be installed. Package code only ever runs inside an OS sandbox.
 
 ```sh
-rivet import npm:prettier
-rivet inspect prettier
-rivet run prettier --version
+rivet import npm:prettier          # global tool, full tree, verified
+rivet run prettier --write src/    # re-verified, sandboxed, network off
+rivet init && rivet add eslint@^9 && rivet install   # project node_modules + rivet.lock
 ```
 
-It also includes a Postgres-backed registry, release state controls, native `rivet.toml` and `rivet.lock` files, local content-addressed artifacts, namesquat warnings, and a deterministic BYOK eval stub.
+## How it defends against supply-chain attacks
+
+| Attack | Defence |
+| --- | --- |
+| Tampered tarball or mirror | Registry checks npm's sha512 integrity, stores artifacts under a hash it computes itself, and signs a canonical tree digest. The CLI re-checks both at install and re-hashes every installed file before each run. |
+| Compromised maintainer publishes malware | Every release is audited before it is installable. The audit diffs against the previous release (new network/process/credential access, new install scripts, new dependencies, publisher change, dropped provenance). Resolution automatically skips releases the audit quarantines or blocks. |
+| Fresh malicious release (worms) | 72-hour cooldown by default: ranges and dist-tags resolve to the newest release older than the window. |
+| Install-script payloads | Install scripts never run by default. Allowed scripts run inside the sandbox. |
+| Credential theft at run time | macOS Seatbelt or Linux bubblewrap: network off, home directory hidden, `.ssh`/`.aws`/`.npmrc`/keychains unreadable, environment scrubbed. |
+| Forged or replayed trust data | Ed25519-signed, short-lived release statements; registry key pinned on first use; cached statements never roll back; lockfiles are bound to one registry key. |
+| Forged audits | Only the registry creates audits; client-submitted verdicts are rejected. |
+| Provenance spoofing | npm Sigstore provenance is verified against the public-good trust root and bound to the tarball digest; the proven repository is compared with the declared one. |
+| Manifest confusion | The signed manifest comes from the tarball's own package.json, and any disagreement with the npm metadata is flagged. |
+| Dependency confusion | Registry-native names take precedence and are never resolved from npm. Claiming a name npm already serves needs the admin token. |
+| Typosquats | Names confusable with popular packages are flagged unless the package is itself established (weekly downloads). |
+| git/URL/file dependencies | Refused: they cannot be audited. |
+
+See [ADR 0007](docs/adr/0007-signed-attestations-and-runtime-sandbox.md) for the trust chain and its limits.
 
 ## Layout
 
 ```text
-cli/          Rust CLI and package-manager logic
-registry/     Go registry service and Postgres persistence
-audit-agent/  Node/static gVisor audit-agent images
-schemas/      Public JSON schemas for manifests, locks, and events
+cli/          Rust CLI: resolver, verifier, content-addressed store, linker, sandbox
+registry/     Go registry: npm mirror, audits, Ed25519 attestations, Postgres persistence
+audit-agent/  Node dynamic audit agent image run under gVisor
+schemas/      Public JSON schemas for manifests, lockfiles, attestations and events
 examples/     Demo packages and npm import notes
-fixtures/     Deterministic package fixtures for compatibility and audit checks
+fixtures/     Package fixtures (benign, risky, malicious) and the tree-digest vector
+tools/        Workspace governance and the live end-to-end script
 ```
 
 ## Workspace Governance
@@ -39,59 +55,79 @@ fixtures/     Deterministic package fixtures for compatibility and audit checks
 Public CLI commands tracked by workspace governance:
 
 ```text
-rivet init
-rivet add
-rivet install
-rivet import
-rivet inspect
-rivet run
-rivet verify
-rivet publish
-rivet revoke
-rivet yank
-rivet eval
+rivet init                 create rivet.toml (with a [policy] section)
+rivet add                  add a dependency (ranges, tags, scoped names, npm: aliases)
+rivet install              resolve or re-verify rivet.lock, link node_modules (--frozen)
+rivet import               install an npm package as a global tool
+rivet inspect              show a package's signed statement, audit, provenance and diff
+rivet run                  verify every exposed installed package and run in the sandbox
+rivet verify               fetch a fresh statement, re-hash installed files (--reaudit)
+rivet publish              publish a Rivet-native package
+rivet revoke               revoke a release
+rivet yank                 yank a release
+rivet eval                 advisory BYOK eval
 rivet byok add
 rivet byok list
+rivet trust show           show the pinned registry key
+rivet trust reset          forget the pinned key
+```
+
+Useful flags: `--allow-network`, `--allow-write <path>`, `--allow-env <name>`, `--allow-scripts`, `--allow-fresh`, `--min-age-hours <n>`, `--require-provenance`, `--allow-unverified`, `--unsafe-allow-risk`, `--unsafe-allow-revoked`, `--unsafe-no-sandbox`, `--json`, `--events`, `--dry-run`.
+
+Project policy lives in `rivet.toml`:
+
+```toml
+[policy]
+min_release_age_hours = 72
+allow_scripts = ["esbuild"]     # run these install scripts, sandboxed
+allow_network = ["vite"]        # commands allowed to use the network
+require_provenance = false
+require_sandbox_audit = false   # currently fails closed: hook observations are untrusted
 ```
 
 Public schemas:
 
 - `event.schema.json`
+- `rivet-attestation.schema.json`
 - `rivet-lock.schema.json`
 - `rivet-manifest.schema.json`
 
-Architecture decisions live in `docs/adr/`. The current ADRs lock the workspace metadata source, component boundaries, future Rivet-native workspace publishing, lockfile/resolver policy, audit trust policy, and private registry precedence.
+Architecture decisions live in `docs/adr/`. They cover the workspace metadata source, component boundaries, future Rivet-native workspace publishing, lockfile/resolver policy, audit trust policy, private registry precedence, and signed attestations with the run-time sandbox. `docs/security-review.md` records the security review findings, how each is tested, platform validation, run-time cost and the open limits.
 
 ## Development
 
-Start the local registry dependencies:
-
-```sh
-docker compose up -d postgres
-```
-
-Run the registry:
+Run the registry. The in-memory store is the quickest option; Postgres is used for anything persistent:
 
 ```sh
 cd registry
+RIVET_STORE=memory RIVET_REGISTRY_TOKEN=dev-token go run ./cmd/server
+
+# or with Postgres
+docker compose up -d postgres
 DATABASE_URL=postgres://rivet:rivet@localhost:5432/rivet?sslmode=disable \
-RIVET_REGISTRY_TOKEN=dev-token \
-RIVET_ARTIFACT_DIR=./artifacts \
-go run ./cmd/server
+RIVET_REGISTRY_TOKEN=dev-token go run ./cmd/server
 ```
 
-Build the local static gVisor audit-agent image:
+Postgres registries created before canonical `tree_digest` was stored must be migrated from their immutable artifacts or reset before this version starts. Startup reports the number of legacy releases and refuses to serve them without attestations; this development version does not perform an automatic backfill. Preserve the database and artifact store for an external migration, or reset a disposable development registry and reimport its packages.
 
-```sh
-make audit-agent-image
-```
+Registry settings:
 
-Run the CLI:
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RIVET_ENV` | `development` | `production` requires an explicit signing key and a 32+ character token, and forbids the memory store |
+| `RIVET_SIGNING_KEY` / `RIVET_SIGNING_KEY_FILE` | `./data/signing.key` | base64 Ed25519 seed; generated on first start in development |
+| `RIVET_REGISTRY_TOKEN` / `RIVET_ADMIN_TOKEN` | | publisher and admin bearer tokens |
+| `RIVET_AUDIT_MODE` | `static` | `gvisor` adds dynamic audits (needs Docker with runsc and `make audit-agent-image`) |
+| `RIVET_PUBLIC_MIRROR` | `false` | allow unauthenticated npm resolve/import requests |
+| `RIVET_VERIFY_PROVENANCE` | `true` | verify npm Sigstore provenance |
+| `RIVET_ATTESTATION_TTL_HOURS` | `168` | lifetime of signed statements |
+| `RIVET_NPM_UPSTREAM` | `https://registry.npmjs.org` | upstream npm registry |
+
+Use the CLI:
 
 ```sh
 cd cli
-RIVET_REGISTRY_URL=http://localhost:8080 \
-RIVET_REGISTRY_TOKEN=dev-token \
+RIVET_REGISTRY_URL=http://localhost:8080 RIVET_REGISTRY_TOKEN=dev-token \
 cargo run -- import npm:prettier
 ```
 
@@ -103,4 +139,8 @@ make docs-check
 make test
 make cli-clippy
 make fmt-check
+make audit-agent-check
+make registry-test-postgres   # needs RIVET_TEST_DATABASE_URL
+make e2e                      # live run against registry.npmjs.org, temp dir and $HOME
+tools/e2e/linux.sh            # CLI tests and e2e under real bubblewrap, in Docker
 ```

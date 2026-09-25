@@ -6,13 +6,16 @@ target/
 bin/
 !fixtures/packages/*/bin/
 !fixtures/packages/*/bin/**
+!examples/*/bin/
+!examples/*/bin/**
 coverage.out
 registry/rivet-registry
 registry/artifacts/
-audit-agent/registry-audit-agent
+registry/data/
 .rivet/
 rivet.lock
 node_modules/
 dist/
 tmp/
 __pycache__/
+audit-agent/registry-audit-agent

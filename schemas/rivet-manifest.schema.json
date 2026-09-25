@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.rivet.dev/rivet-manifest.schema.json",
   "title": "Rivet Manifest",
+  "description": "rivet.toml: package metadata, dependencies and install/run policy.",
   "type": "object",
   "required": ["package"],
   "properties": {
@@ -15,10 +16,60 @@
         "license": { "type": "string" }
       }
     },
+    "publisher": {
+      "type": "object",
+      "required": ["identity"],
+      "properties": {
+        "identity": { "type": "string" },
+        "provenance": { "type": "string" }
+      }
+    },
     "dependencies": {
       "type": "object",
+      "description": "Alias to npm-style spec: a range, dist-tag or npm:<name>@<range> alias. git, URL and file specs are refused.",
       "additionalProperties": { "type": "string" }
+    },
+    "executables": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["entry"],
+        "properties": {
+          "entry": { "type": "string" },
+          "summary": { "type": "string" },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "filesystem": { "type": "array", "items": { "type": "string" } },
+              "network": { "type": "boolean", "description": "A request; users grant network per command." },
+              "env": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["command"],
+        "properties": {
+          "command": { "type": "string" },
+          "filesystem": { "type": "array", "items": { "type": "string" } },
+          "network": { "type": "boolean" },
+          "env": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "min_release_age_hours": { "type": "number", "minimum": 0, "default": 72, "description": "Cooldown: releases younger than this are not installed." },
+        "allow_scripts": { "type": "array", "items": { "type": "string" }, "description": "Packages whose install scripts may run, inside the sandbox." },
+        "allow_network": { "type": "array", "items": { "type": "string" }, "description": "Commands (or script packages) granted network access." },
+        "require_provenance": { "type": "boolean", "default": false },
+        "require_sandbox_audit": { "type": "boolean", "default": false }
+      }
     }
   }
 }
-

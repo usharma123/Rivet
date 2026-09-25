@@ -1,7 +1,0 @@
-FROM scratch
-
-COPY registry-audit-agent /rivet-audit-agent
-
-USER 65532:65532
-ENTRYPOINT ["/rivet-audit-agent"]
-

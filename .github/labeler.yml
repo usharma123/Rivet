@@ -1,7 +1,6 @@
 "component:audit":
   - changed-files:
       - any-glob-to-any-file: audit-agent/**
-      - any-glob-to-any-file: registry/cmd/audit-agent/**
       - any-glob-to-any-file: registry/internal/audit/**
 "component:cli":
   - changed-files:
@@ -26,7 +25,9 @@
       - any-glob-to-any-file: rivet.workspace.toml
       - any-glob-to-any-file: workspace.snapshot.json
       - any-glob-to-any-file: tools/workspace/**
+      - any-glob-to-any-file: tools/e2e/**
       - any-glob-to-any-file: docs/adr/**
+      - any-glob-to-any-file: docs/security-review.md
       - any-glob-to-any-file: .github/**
       - any-glob-to-any-file: Makefile
       - any-glob-to-any-file: README.md

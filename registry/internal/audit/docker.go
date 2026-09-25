@@ -3,6 +3,8 @@ package audit
 import (
 	"bytes"
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,132 +12,121 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/usharma123/rivet/registry/internal/canon"
 	"github.com/usharma123/rivet/registry/internal/registry"
 )
 
+// DockerRunner executes the audit agent image under gVisor with no network.
+// Egress attempts are recorded by the agent's in-process hooks and by the
+// absence of any network namespace; nothing can leave the sandbox.
 type DockerRunner struct {
-	Image      string
-	ProxyURL   string
-	SignSecret string
+	AgentImage string
 	DockerBin  string
-	Now        func() time.Time
 }
 
-func NewDockerRunner(image, proxyURL, signSecret string) *DockerRunner {
+func NewDockerRunner(image string) *DockerRunner {
 	if image == "" {
 		image = "rivet-audit-agent:local"
 	}
-	if signSecret == "" {
-		signSecret = "dev-audit-signing-key"
-	}
-	return &DockerRunner{
-		Image:      image,
-		ProxyURL:   proxyURL,
-		SignSecret: signSecret,
-		DockerBin:  "docker",
-		Now:        time.Now,
-	}
+	return &DockerRunner{AgentImage: image, DockerBin: "docker"}
 }
 
-func (r *DockerRunner) Audit(ctx context.Context, version registry.VersionRecord, artifactPath string) (registry.AuditRecord, error) {
-	if err := r.ensureRunsc(ctx); err != nil {
-		return registry.AuditRecord{}, err
-	}
-	outDir, err := os.MkdirTemp("", "rivet-audit-evidence-*")
-	if err != nil {
-		return registry.AuditRecord{}, err
-	}
-	defer os.RemoveAll(outDir)
-	if err := os.Chmod(outDir, 0o777); err != nil {
-		return registry.AuditRecord{}, err
-	}
+func (r *DockerRunner) Runtime() string { return registry.SandboxGVisor }
 
-	token := auditToken(version)
-	proxyURL := r.ProxyURL
-	if proxyURL == "" {
-		proxyURL = "http://host.docker.internal:8080/v1/audit-proxy/model"
-	}
-	args := []string{
+func (r *DockerRunner) Image() string { return r.AgentImage }
+
+// Args returns the docker arguments used for an audit run.
+func (r *DockerRunner) Args(version registry.VersionRecord, artifactPath, outDir string) []string {
+	return []string{
 		"run", "--rm",
 		"--runtime=runsc",
+		"--network=none",
 		"--read-only",
+		"--tmpfs=/tmp:rw,size=64m",
 		"--cap-drop=ALL",
 		"--security-opt=no-new-privileges",
 		"--pids-limit=256",
 		"--memory=512m",
 		"--cpus=1",
-		"--network=rivet-audit-net",
-		"--add-host=host.docker.internal:host-gateway",
-		"-v", artifactPath + ":/artifact/package.tgz:ro",
+		"-v", artifactPath + ":/artifact/package:ro",
+		"-v", filepath.Join(outDir, "manifest.json") + ":/audit/manifest.json:ro",
 		"-v", outDir + ":/evidence:rw",
-		"-e", "RIVET_AUDIT_TOKEN=" + token,
-		"-e", "RIVET_AUDIT_PROXY_URL=" + proxyURL,
 		"-e", "RIVET_PACKAGE_NAME=" + version.Name,
 		"-e", "RIVET_PACKAGE_VERSION=" + version.Version,
 		"-e", "RIVET_SAFE_TIMEOUT_MS=30000",
 		"-e", "RIVET_ADVERSARIAL_TIMEOUT_MS=120000",
-		r.Image,
+		r.AgentImage,
 	}
-	cmd := exec.CommandContext(ctx, r.DockerBin, args...)
+}
+
+func (r *DockerRunner) Run(ctx context.Context, version registry.VersionRecord, artifactPath string) (Evidence, error) {
+	if err := r.ensureRunsc(ctx); err != nil {
+		return Evidence{}, err
+	}
+	outDir, err := os.MkdirTemp("", "rivet-audit-evidence-*")
+	if err != nil {
+		return Evidence{}, err
+	}
+	defer os.RemoveAll(outDir)
+	artifact, err := os.ReadFile(artifactPath)
+	if err != nil {
+		return Evidence{}, err
+	}
+	if version.ArtifactHash != "" {
+		sum := sha512.Sum512(artifact)
+		if version.ArtifactHash != "sha512-"+hex.EncodeToString(sum[:]) {
+			return Evidence{}, fmt.Errorf("audit artifact hash mismatch")
+		}
+	}
+	canonical, err := canon.ReadTarball(artifact)
+	if err != nil {
+		return Evidence{}, err
+	}
+	if version.TreeDigest != "" && canonical.TreeDigest != version.TreeDigest {
+		return Evidence{}, fmt.Errorf("audit tree differs from signed tree digest")
+	}
+	packageDir := filepath.Join(outDir, "canonical-package")
+	for _, name := range canonical.Paths() {
+		file := canonical.Files[name]
+		path := filepath.Join(packageDir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return Evidence{}, err
+		}
+		mode := os.FileMode(0o644)
+		if file.Executable {
+			mode = 0o755
+		}
+		if err := os.WriteFile(path, file.Data, mode); err != nil {
+			return Evidence{}, err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "manifest.json"), version.Manifest, 0o644); err != nil {
+		return Evidence{}, err
+	}
+	// The agent runs as an unprivileged uid inside the container.
+	if err := os.Chmod(outDir, 0o777); err != nil {
+		return Evidence{}, err
+	}
+	cmd := exec.CommandContext(ctx, r.DockerBin, r.Args(version, packageDir, outDir)...)
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	if err := cmd.Run(); err != nil {
-		return registry.AuditRecord{}, fmt.Errorf("gVisor audit container failed: %w: %s", err, output.String())
+		return Evidence{}, fmt.Errorf("gVisor audit container failed: %w: %s", err, truncate(output.String(), 2000))
 	}
-
 	evidence, err := readEvidence(filepath.Join(outDir, "evidence.json"))
 	if err != nil {
-		return registry.AuditRecord{}, err
+		return Evidence{}, err
 	}
-	if evidence.Static.ArtifactSize == 0 {
-		evidence.Static.ArtifactSize = version.ArtifactSize
+	if evidence.Agent == nil {
+		return Evidence{}, fmt.Errorf("audit agent omitted completion evidence")
 	}
-	if evidence.Static.SourceRepo == "" {
-		evidence.Static.SourceRepo = version.SourceRepo
+	if evidence.Agent["complete"] != "true" {
+		return Evidence{}, fmt.Errorf("audit agent did not complete a runnable probe")
 	}
-	if evidence.Static.SourceVisibility == "" || evidence.Static.SourceVisibility == "unknown" {
-		evidence.Static.SourceVisibility = version.SourceVisibility
-	}
-	if version.HasInstallScripts {
-		evidence.Static.HasInstallScripts = true
-		if len(evidence.Static.InstallScripts) == 0 {
-			evidence.Static.InstallScripts = []string{"declared-script"}
-		}
-	}
-	if version.HasNativeBinaries {
-		evidence.Static.HasNativeBinaries = true
-		if len(evidence.Static.NativeBinaries) == 0 {
-			evidence.Static.NativeBinaries = []string{"declared-native-binary"}
-		}
-	}
-	evidence.Sandbox = map[string]string{"runtime": "gvisor/runsc", "network": "rivet-audit-net"}
-	evidence.Agent = map[string]string{"image": r.Image}
-	score := ScoreEvidence(evidence)
-	now := r.Now()
-	audit := registry.AuditRecord{
-		PackageName:    version.Name,
-		Version:        version.Version,
-		Status:         registry.AuditPassed,
-		SandboxRuntime: "gvisor/runsc",
-		AgentImage:     r.Image,
-		Evidence:       EvidenceJSON(evidence),
-		Verdict:        score.Verdict,
-		RiskScore:      score.RiskScore,
-		Reasons:        mustJSON(score.Reasons),
-		Suggested:      mustJSON(score.SuggestedActions),
-		CostCents:      50,
-		StartedAt:      now,
-		CompletedAt:    &now,
-	}
-	signature, err := SignAudit(audit, r.SignSecret)
-	if err != nil {
-		return registry.AuditRecord{}, err
-	}
-	audit.Signature = signature
-	return audit, nil
+	evidence.Agent["image"] = r.AgentImage
+	return evidence, nil
 }
 
 func (r *DockerRunner) ensureRunsc(ctx context.Context) error {
@@ -146,13 +137,6 @@ func (r *DockerRunner) ensureRunsc(ctx context.Context) error {
 	}
 	if !strings.Contains(string(output), `"runsc"`) {
 		return errors.New("gVisor runsc runtime is not registered with Docker")
-	}
-	network := exec.CommandContext(ctx, r.DockerBin, "network", "inspect", "rivet-audit-net")
-	if err := network.Run(); err != nil {
-		create := exec.CommandContext(ctx, r.DockerBin, "network", "create", "rivet-audit-net")
-		if out, err := create.CombinedOutput(); err != nil {
-			return fmt.Errorf("create rivet-audit-net: %w: %s", err, string(out))
-		}
 	}
 	return nil
 }
@@ -167,10 +151,6 @@ func readEvidence(path string) (Evidence, error) {
 		return Evidence{}, err
 	}
 	return evidence, nil
-}
-
-func auditToken(version registry.VersionRecord) string {
-	return strings.ReplaceAll(version.Name+"-"+version.Version+"-"+time.Now().Format("20060102150405"), "/", "-")
 }
 
 func mustJSON(value any) json.RawMessage {
