@@ -11,6 +11,7 @@
 # Usage: tools/e2e/npm-port.sh
 #   RIVET_E2E_KEEP=1          keep work directories
 #   RIVET_E2E_BENCH_OUT=file  append run-time benchmark results (JSON lines)
+#   RIVET_E2E_LOG_DIR=dir    copy each placement's registry log before cleanup
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -21,11 +22,19 @@ WORKS=("$BUILD")
 REGISTRY_PID=""
 
 cleanup() {
+  local status=$?
+  trap - EXIT
   stop_registry
+  save_registry_log
   for dir in "${WORKS[@]}"; do
     chmod -R u+w "$dir" 2>/dev/null || true
-    if [[ -z "${RIVET_E2E_KEEP:-}" ]]; then rm -rf "$dir"; else echo "kept $dir"; fi
+    if [[ -z "${RIVET_E2E_KEEP:-}" ]]; then
+      rm -rf "$dir" || printf 'warning: could not remove %s\n' "$dir" >&2
+    else
+      echo "kept $dir"
+    fi
   done
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -54,6 +63,18 @@ stop_registry() {
     wait "$REGISTRY_PID" 2>/dev/null || true
     REGISTRY_PID=""
   fi
+}
+
+save_registry_log() {
+  case "${PLACEMENT:-}" in
+    tmp|home)
+      if [[ -n "${RIVET_E2E_LOG_DIR:-}" && -n "${WORK:-}" && -f "$WORK/registry.log" ]]; then
+        if ! { mkdir -p "$RIVET_E2E_LOG_DIR" && cp "$WORK/registry.log" "$RIVET_E2E_LOG_DIR/$PLACEMENT-registry.log"; }; then
+          printf 'warning: could not save %s registry log\n' "$PLACEMENT" >&2
+        fi
+      fi
+      ;;
+  esac
 }
 
 # Times `rivet run` (which verifies and re-hashes the whole installed tree)
@@ -97,7 +118,7 @@ PY
 
 step "build registry and CLI"
 (cd "$ROOT/registry" && go build -o "$BUILD/rivet-registry" ./cmd/server)
-(cd "$ROOT/cli" && cargo build --release --quiet)
+(cd "$ROOT/cli" && cargo build --release --locked --quiet)
 RIVET="${CARGO_TARGET_DIR:-$ROOT/target}/release/rivet"
 
 run_scenario() {
@@ -238,6 +259,7 @@ PY
 }
 
 for PLACEMENT in $PLACEMENTS; do
+  WORK=""
   case "$PLACEMENT" in
     tmp) WORK=$(mktemp -d "${TMPDIR:-/tmp}/rivet-e2e.XXXXXX") ;;
     home) WORK=$(mktemp -d "$HOME/.rivet-e2e.XXXXXX") ;;
@@ -249,6 +271,7 @@ for PLACEMENT in $PLACEMENTS; do
   unset RIVET_REGISTRY_PUBKEY
   run_scenario
   stop_registry
+  save_registry_log
   printf '\n[%s] all checks passed in %s\n' "$PLACEMENT" "$WORK"
 done
 

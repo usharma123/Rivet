@@ -37,7 +37,9 @@ ci_required_commands = [
   "make cli-clippy",
   "make fmt-check",
   "make registry-test",
+  "make registry-test-postgres",
   "make audit-agent-check",
+  "make e2e",
 ]
 
 [[release_groups]]

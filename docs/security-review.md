@@ -12,9 +12,9 @@ Passing tests show that the listed fixes work for the cases tested. They do not 
 | Postgres store contract | `make registry-test-postgres` with `RIVET_TEST_DATABASE_URL` | Store behaviour and the legacy-release startup check. |
 | Live npm end-to-end | `make e2e` | Import, install, run, tamper, publish, revoke, offline and key-pinning flows against registry.npmjs.org, once in a temp directory and once under `$HOME`. |
 | Linux locally | `tools/e2e/linux.sh` | The CLI suite and the end-to-end script as an unprivileged user under real bubblewrap, in Docker. |
-| CI | `.github/workflows/ci.yml` | The `product` job runs the live Linux sandbox tests; the `e2e` job runs the end-to-end script in both placements on x86_64 Ubuntu. |
+| CI | `.github/workflows/ci.yml` | On Ubuntu 24.04, `product` runs the live Linux sandbox tests, `e2e` runs both placements and saves console, registry and benchmark logs for seven days, and `postgres` runs the real database tests without Go's test cache. |
 
-Review-time probe output in the ignored `tmp/` directory is not part of the repository. Findings that relied only on a probe now point to a repository regression test or end-to-end step. The current worktree changes are uncommitted.
+Review-time probe output in the ignored `tmp/` directory is not part of the repository. Findings that relied only on a probe now point to a repository regression test or end-to-end step.
 
 ## Findings
 

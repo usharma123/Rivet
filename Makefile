@@ -3,10 +3,10 @@
 test: workspace-check cli-test registry-test
 
 cli-test:
-	cd cli && cargo test
+	cd cli && cargo test --locked
 
 cli-clippy:
-	cd cli && cargo clippy --all-targets -- -D warnings
+	cd cli && cargo clippy --locked --all-targets -- -D warnings
 
 cli-fmt-check:
 	cd cli && cargo fmt --check
@@ -18,7 +18,7 @@ registry-test:
 # RIVET_TEST_DATABASE_URL=postgres://rivet:rivet@localhost:5432/rivet_test?sslmode=disable
 registry-test-postgres:
 	test -n "$$RIVET_TEST_DATABASE_URL"
-	cd registry && go test ./internal/db/ -run '^(TestPostgresStoreContract|TestLegacyReleaseWithoutDigestBlocksStartup)$$' -v
+	cd registry && go test -count=1 ./internal/db/ -run '^(TestPostgresStoreContract|TestLegacyReleaseWithoutDigestBlocksStartup)$$' -v
 
 registry-fmt-check:
 	cd registry && test -z "$$(gofmt -l .)"
