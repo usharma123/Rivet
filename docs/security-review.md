@@ -58,7 +58,7 @@ Severity: P1 breaks a claimed trust boundary; P2 is a correctness or robustness 
 | --- | --- | --- | --- |
 | macOS 15 (arm64), Seatbelt | Pass | Pass | Developer machine. |
 | Linux aarch64, bubblewrap, non-root | Pass | Pass | Fresh `tools/e2e/linux.sh` run on 2026-09-25: LinuxKit 6.12.54, bubblewrap 0.8.0, UID 1000. The outer Docker container is privileged so the unprivileged user can create user namespaces; the repository mount is read-only. |
-| Linux x86_64, bubblewrap | Configured in CI | Configured in CI | Not yet observed passing: the x86_64 seccomp filter has only been exercised in a model, not a kernel. |
+| Linux x86_64, bubblewrap, non-root | Pass | Pass | GitHub Actions `ubuntu-latest`, bubblewrap 0.9.0, CI run [36175660533](https://github.com/usharma123/Rivet/actions/runs/36175660533) on PR #1 (commit `098fc31`). All six live sandbox tests ran under bubblewrap, including the seccomp filter refusing Unix sockets on an x86_64 kernel. The same run passed the Postgres store contract and legacy-release startup test. |
 | gVisor dynamic audit | Not run | Not run | See R6 and R7. |
 
 On the current macOS worktree, the full end-to-end run passed in both placements. All 56 Rust tests, Clippy, formatting, workspace and docs checks, and Node checks passed. The corrected PostgreSQL target ran both the store contract and legacy-release startup tests against a real database, then shut down the disposable database. The fresh Linux run passed all 56 Rust tests, including live bubblewrap tests, and both end-to-end placements. A separate `go test ./...` run passed there; it did not enable the real-database tests. The Linux run used source snapshot SHA-256 `b4d662a1adaa8ed3a2b1209f710773f348cc93fae704b669d66fd489e0a86eba`.
@@ -78,7 +78,7 @@ Historical samples measured on 2026-09-25 with `semver 1.2.3 -r ^1.0.0` in the e
 
 The historical hashing figures summed each package's elapsed whole milliseconds, discarding submillisecond time from every package. They remain invalid; corrected macOS and Linux samples are below. The corrected verifier sums durations before rounding and reports total, layout, fetch, hashing, and other verification time. Other verification includes signature checks, cache writes, policy and dependency-graph checks, plus millisecond rounding. Time outside verification also includes CLI startup, sandbox setup, and interpreter and package execution. The registry here was local, so real-network statement fetches will add latency. `rivet run --verbose` prints the breakdown, and `--json` includes it as `verify_timings_ms`.
 
-Current corrected samples (2026-09-25, `semver 1.2.3 -r ^1.0.0`; Linux used `tools/e2e/linux.sh`):
+Current corrected samples (2026-09-25, `semver 1.2.3 -r ^1.0.0`; Linux aarch64 used `tools/e2e/linux.sh`, Linux x86_64 is the shared CI runner and therefore noisier):
 
 | Platform | Placement | Packages | First run | Warm median | Plain node median | Max child RSS | Verify total | Layout | Fetch | Hash | Other |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -86,6 +86,8 @@ Current corrected samples (2026-09-25, `semver 1.2.3 -r ^1.0.0`; Linux used `too
 | macOS arm64 | `$HOME` | 137 | 0.514 s | 0.584 s | 0.064 s | 52.0 MiB | 456 ms | 31 ms | 5 ms | 252 ms | 168 ms |
 | Linux aarch64 | temp | 138 | 0.221 s | 0.218 s | 0.017 s | 23.4 MiB | 191 ms | 2 ms | 5 ms | 168 ms | 16 ms |
 | Linux aarch64 | `$HOME` | 138 | 0.217 s | 0.216 s | 0.018 s | 23.3 MiB | 190 ms | 2 ms | 5 ms | 167 ms | 16 ms |
+| Linux x86_64 (CI) | temp | 138 | 0.244 s | 0.243 s | 0.042 s | 26.3 MiB | 183 ms | 8 ms | 11 ms | 111 ms | 53 ms |
+| Linux x86_64 (CI) | `$HOME` | 138 | 0.246 s | 0.250 s | 0.046 s | 26.2 MiB | 188 ms | 8 ms | 12 ms | 114 ms | 54 ms |
 
 The verification phases come from a separate `rivet run --json --dry-run` sample. They do not partition the first-run or median wall time.
 
@@ -96,7 +98,7 @@ Full-tree hashing is justified by the current module exposure: Node can resolve 
 ## Open limits
 
 - **Dynamic audit trust (R6).** No trusted observation channel exists. A separate observer user alone would not establish that package code cannot suppress or fabricate observations; observations need to come from outside the package's control (for example gVisor's host-side logs), and that boundary needs adversarial tests before any audit is certified as sandboxed. Keep `RIVET_AUDIT_MODE=gvisor` off for normal use until then.
-- **gVisor and x86_64 Linux** have not been observed running (see the platform table).
+- **gVisor** has not been observed running (see the platform table). Linux is validated on aarch64 (Docker) and x86_64 (CI); other Linux architectures fail closed.
 - **Legacy Postgres releases (R17)** need an external migration or a development reset; there is no automatic backfill.
 - **Ancestor `node_modules`.** Rivet refuses to run when any ancestor directory contains `node_modules`, because Node would resolve unverified modules there. This is safe but blocks some monorepo layouts; broader support needs a defined resolution boundary.
 - **Revocation scope.** Because every installed package is verified, one revoked package blocks every command in that project until it is removed or replaced.
