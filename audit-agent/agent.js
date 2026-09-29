@@ -78,7 +78,9 @@ function main() {
   const packageJson = readJson(path.join(packageDir, "package.json"));
 
   const env = {
-    PATH: "/usr/local/bin:/usr/bin:/bin",
+    // Use the supervisor's trusted Node installation for lifecycle scripts too.
+    // Hosted runners may install it outside the system PATH directories.
+    PATH: `${path.dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
     HOME: home.dir,
     CI: "true",
     GITHUB_ACTIONS: "true",

@@ -49,7 +49,8 @@ Create a system account `rivet-registry` with a UID other than 2000, and directo
 `/etc/rivet`, `/var/lib/rivet`, and `/usr/local/libexec`. Keep `/etc/rivet` root-owned
 and accessible only to root and the registry group. Give the registry account
 ownership of `/var/lib/rivet`. Docker group membership is effectively host-root
-access; this is why the audit host should be dedicated. The narrow query helper
+access; this is why the audit host should be dedicated.
+See [Docker group privileges](https://docs.docker.com/engine/install/linux-postinstall/). The narrow query helper
 limits its sudo interface but does not remove the broader Docker privilege.
 
 Create a Postgres database and role named `rivet`. Bind local Postgres to loopback,

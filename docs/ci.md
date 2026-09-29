@@ -14,7 +14,7 @@ checks out nor executes PR code.
 | e2e, four platforms | Live npm imports, runtime sandbox, tampering, revocation, shims, and both temporary-directory and HOME placements |
 | audit-trace, Linux x64 and arm64 | Checksum-verified pinned runsc, separate observer, native network/file probes, forged logs, incomplete evidence, detached children and UID collision refusal |
 | postgres | Uncached real database contract and legacy-release checks; production startup, import authorization, stable key and data after restart |
-| dependency-security | Cargo advisory database and Go reachable-vulnerability checks |
+| dependency-security | Cargo vulnerabilities/unsoundness and Go reachable-vulnerability checks |
 | Rivet required checks | Fails if any prerequisite failed, was cancelled, or was skipped |
 
 The platform matrix is Linux x64 `ubuntu-24.04`, Linux arm64

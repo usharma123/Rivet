@@ -37,6 +37,7 @@ jobs:
           cache: false
       - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - run: actionlint -color
+      - run: shellcheck tools/e2e/*.sh tools/deploy/rivet-runsc-query
       - run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
   product:
@@ -243,9 +244,11 @@ jobs:
           cache-key: dependency-security
       - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
       - run: cargo install cargo-audit --version 0.22.2 --locked
-      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - name: Rust advisory database
-        run: cargo audit --json > "$RUNNER_TEMP/evidence/cargo-audit.json"
+        run: cargo audit --deny unsound --json > "$RUNNER_TEMP/evidence/cargo-audit.json"
+      - name: Install Go scanner with its required build toolchain
+        if: success() || failure()
+        run: GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - name: Go reachable vulnerabilities
         if: success() || failure()
         run: cd registry && govulncheck -json ./... > "$RUNNER_TEMP/evidence/govulncheck.json"

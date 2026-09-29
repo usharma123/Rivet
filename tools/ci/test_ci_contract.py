@@ -22,7 +22,6 @@ class WorkflowContract(unittest.TestCase):
 
     def test_required_gate_covers_every_check(self):
         source = (ROOT / '.github/workflows/ci.yml').read_text()
-        jobs = set(re.findall(r'^  ([a-z][a-z0-9-]+):\n', source, re.M))
         # Extract only the jobs block, excluding top-level event/default mappings.
         source = source.split('\njobs:\n', 1)[1]
         jobs = set(re.findall(r'^  ([a-z][a-z0-9-]+):\n', source, re.M))
@@ -31,6 +30,12 @@ class WorkflowContract(unittest.TestCase):
         self.assertEqual(set(x.strip() for x in needs.split(',')), jobs - {'required'})
         self.assertIn('if: always()', gate)
         self.assertIn("job['result'] != 'success'", gate)
+
+    def test_local_linux_image_uses_the_registry_toolchain(self):
+        version = re.search(r'^go (\S+)$', (ROOT / 'registry/go.mod').read_text(), re.M).group(1)
+        docker_version = re.search(r'^ARG GO_VERSION=(\S+)$',
+                                  (ROOT / 'tools/e2e/Dockerfile.linux').read_text(), re.M).group(1)
+        self.assertEqual(docker_version, version)
 
 
 if __name__ == '__main__':
