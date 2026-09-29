@@ -19,6 +19,9 @@ const workDir = process.env.RIVET_WORK_DIR || path.join(os.tmpdir(), "rivet-work
 const hookPath = path.join(__dirname, "egress-hook.js");
 const safeTimeout = Number(process.env.RIVET_SAFE_TIMEOUT_MS || 30000);
 const adversarialTimeout = Number(process.env.RIVET_ADVERSARIAL_TIMEOUT_MS || 120000);
+const probeUid = process.getuid?.() === 0 ? 2000 : undefined;
+const probeGid = process.getuid?.() === 0 ? 2000 : undefined;
+const auditNonce = process.env.RIVET_AUDIT_NONCE || "";
 
 const HONEY_ENV = {
   NPM_TOKEN: "npm_RIVETHONEYTOKEN0000000000000000000000",
@@ -29,9 +32,17 @@ const HONEY_ENV = {
 };
 
 function main() {
+  if (auditNonce && probeUid !== undefined) {
+    const evidenceStat = fs.statSync(evidenceDir);
+    if (evidenceStat.uid === probeUid || (evidenceStat.mode & 0o077) !== 0) {
+      throw new Error("evidence directory is accessible to the package probe UID or group");
+    }
+  }
   fs.rmSync(workDir, { recursive: true, force: true });
   fs.mkdirSync(workDir, { recursive: true });
   const egressLog = path.join(workDir, "egress.jsonl");
+  fs.writeFileSync(egressLog, "");
+  if (probeUid !== undefined) fs.chownSync(egressLog, probeUid, probeGid);
   const home = plantHoneytokens(path.join(workDir, "home"));
 
   const evidence = {
@@ -47,6 +58,7 @@ function main() {
   if (fs.existsSync(canonicalPackage)) {
     packageDir = path.join(workDir, "package");
     fs.cpSync(canonicalPackage, packageDir, { recursive: true });
+    if (probeUid !== undefined) makeProbeOwned(packageDir);
     manifest = readJson(manifestPath);
     if (!manifest.name || !manifest.version) throw new Error("authoritative audit manifest is missing");
   } else {
@@ -63,9 +75,12 @@ function main() {
     packageDir = findPackageDir(workDir);
     manifest = readJson(path.join(packageDir, "package.json"));
   }
+  const packageJson = readJson(path.join(packageDir, "package.json"));
 
   const env = {
-    PATH: "/usr/local/bin:/usr/bin:/bin",
+    // Use the supervisor's trusted Node installation for lifecycle scripts too.
+    // Hosted runners may install it outside the system PATH directories.
+    PATH: `${path.dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
     HOME: home.dir,
     CI: "true",
     GITHUB_ACTIONS: "true",
@@ -78,19 +93,45 @@ function main() {
   };
 
   const scripts = manifest.install_scripts || manifest.scripts || {};
+  const required = [];
   for (const name of ["preinstall", "install", "postinstall"]) {
     if (typeof scripts[name] !== "string" || !scripts[name]) continue;
     const result = run("script:" + name, "sh", ["-c", scripts[name]], packageDir, { ...env, npm_lifecycle_event: name }, adversarialTimeout);
     evidence.adversarial_probes.push(result);
+    required.push({ name: result.name, passed: result.exit_code === 0 && !result.timeout });
   }
   const requireProbe = run("require", process.execPath, ["-e", "require(process.argv[1])", packageDir], workDir, env, safeTimeout);
   evidence.adversarial_probes.push(requireProbe);
+  for (const field of ["main", "module"]) {
+    if (typeof packageJson[field] !== "string" || !packageJson[field]) continue;
+    const full = packageEntry(packageDir, packageJson[field]);
+    const result = full
+      ? run(`entry:${field}`, process.execPath, ["-e", "import(require('node:url').pathToFileURL(process.argv[1]).href)", full], packageDir, env, safeTimeout)
+      : probeResult(`entry:${field}`, String(packageJson[field]), { status: 1, stderr: "entry escapes the canonical package" });
+    evidence.adversarial_probes.push(result);
+    required.push({ name: result.name, passed: result.exit_code === 0 && !result.timeout });
+  }
   for (const [command, entry] of Object.entries(binEntries(manifest))) {
-    const full = path.join(packageDir, String(entry).replace(/^\.\//, ""));
-    if (!full.startsWith(packageDir + path.sep)) continue;
-    for (const flag of ["--version", "--help"]) {
-      evidence.safe_probes.push(run(`${flag.slice(2)}:${command}`, process.execPath, [full, flag], packageDir, env, safeTimeout));
+    const full = packageEntry(packageDir, String(entry));
+    if (!full) {
+      required.push({ name: `bin:${command}`, passed: false });
+      evidence.safe_probes.push(probeResult(`bin:${command}`, String(entry), { status: 1, stderr: "bin escapes the canonical package" }));
+      continue;
     }
+    let invocation;
+    try { invocation = binInvocation(full); }
+    catch (error) {
+      required.push({ name: `bin:${command}`, passed: false });
+      evidence.safe_probes.push(probeResult(`bin:${command}`, full, { status: 1, error }));
+      continue;
+    }
+    const results = [];
+    for (const flag of ["--version", "--help"]) {
+      const result = run(`${flag.slice(2)}:${command}`, invocation.command, [...invocation.args, flag], packageDir, env, safeTimeout);
+      evidence.safe_probes.push(result);
+      results.push(result);
+    }
+    required.push({ name: `bin:${command}`, passed: results.some((result) => result.exit_code === 0 && !result.timeout) });
   }
 
   for (const entry of readJsonLines(egressLog)) {
@@ -105,15 +146,76 @@ function main() {
       });
     } else if (entry.kind === "honeytoken") {
       evidence.honeytokens.push({ token: String(entry.token), probe: entry.probe, how: entry.how });
-    } else if (entry.kind === "process") {
-      evidence.adversarial_probes.push({ name: "spawned:" + entry.probe, command: String(entry.command).slice(0, 400), exit_code: 0, timeout: false });
     }
   }
   evidence.egress = dedupe(evidence.egress, (e) => `${e.probe}|${e.host}|${e.port}|${e.protocol}`).slice(0, 50);
   evidence.honeytokens = dedupe(evidence.honeytokens, (h) => `${h.probe}|${h.token}`).slice(0, 50);
-  const hasTarget = Object.keys(scripts).some((name) => ["preinstall", "install", "postinstall"].includes(name)) || Object.keys(binEntries(manifest)).length > 0 || requireProbe.exit_code === 0;
-  evidence.agent.complete = hasTarget ? "true" : "false";
+  const probes = [...evidence.safe_probes, ...evidence.adversarial_probes];
+  const runnable = required.length
+    ? required.every((target) => target.passed)
+    : requireProbe.exit_code === 0 && !requireProbe.timeout;
+  const timedOut = probes.some((probe) => probe.timeout);
+  if (probeUid !== undefined) stopPackageProcesses();
+  evidence.agent.complete = runnable && !timedOut ? "true" : "false";
+  evidence.agent.required_targets = String(required.length);
+  const failedTarget = required.find((target) => !target.passed);
+  if (failedTarget) evidence.agent.failed_target = failedTarget.name.slice(0, 100);
   writeEvidence(evidence);
+  // The trace collector accepts this syscall only from the root supervisor.
+  // Package probes run as another UID and do not receive the nonce. The path
+  // deliberately does not exist; openat/enter records the attempted open.
+  if (auditNonce && evidence.agent.complete === "true") {
+    try { fs.openSync(`/rivet-audit-complete-${auditNonce}`, "r"); } catch {}
+    fs.writeFileSync(path.join(evidenceDir, "ready"), auditNonce, { flag: "wx" });
+    const releasePath = path.join(evidenceDir, "release");
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      try {
+        if (fs.readFileSync(releasePath, "utf8") === auditNonce) return;
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+    throw new Error("host audit supervisor did not release completed probe");
+  }
+  if (evidence.agent.complete !== "true") process.exitCode = 1;
+}
+
+function makeProbeOwned(root) {
+  const walk = (file) => {
+    const stat = fs.lstatSync(file);
+    if (stat.isSymbolicLink()) throw new Error("canonical package contains a symlink");
+    fs.chownSync(file, probeUid, probeGid);
+    if (stat.isDirectory()) for (const name of fs.readdirSync(file)) walk(path.join(file, name));
+  };
+  walk(root);
+}
+
+function stopPackageProcesses() {
+  // PID 1 remains alive while we reap detached descendants. Package code
+  // cannot change UID after setpriv has dropped its groups and capabilities.
+  for (let pass = 0; pass < 3; pass++) {
+    let found = 0;
+    for (const name of fs.readdirSync("/proc")) {
+      if (!/^\d+$/.test(name)) continue;
+      let status;
+      try { status = fs.readFileSync(`/proc/${name}/status`, "utf8"); } catch (error) {
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+      const uidLine = status.match(/^Uid:\s+(\d+)\s+(\d+)/m);
+      if (!uidLine || (Number(uidLine[1]) !== probeUid && Number(uidLine[2]) !== probeUid)) continue;
+      if (/^State:\s+Z/m.test(status)) continue;
+      found++;
+      try { process.kill(Number(name), "SIGKILL"); } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    }
+    if (!found) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  }
+  throw new Error("package child processes remained after probe cleanup");
 }
 
 function plantHoneytokens(dir) {
@@ -127,10 +229,15 @@ function plantHoneytokens(dir) {
     ".docker/config.json": '{"auths":{"https://index.docker.io/v1/":{"auth":"cml2ZXQ6aG9uZXl0b2tlbg=="}}}\n',
   };
   const paths = [];
+  fs.mkdirSync(dir, { recursive: true });
+  // The sticky bit lets the package write ordinary HOME files but prevents
+  // it from renaming the root-owned credential files to an untraced alias.
+  fs.chmodSync(dir, 0o1777);
   for (const [relative, content] of Object.entries(files)) {
     const full = path.join(dir, relative);
     fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, content, { mode: 0o600 });
+    fs.writeFileSync(full, content, { mode: 0o444 });
+    fs.chmodSync(full, 0o444);
     paths.push(full);
   }
   paths.push(path.join(dir, ".ssh"), path.join(dir, ".aws"));
@@ -138,17 +245,20 @@ function plantHoneytokens(dir) {
 }
 
 function run(name, command, args, cwd, env, timeout) {
-  const result = spawnSync(command, args, { cwd, env: { ...env, RIVET_PROBE_NAME: name }, encoding: "utf8", timeout, maxBuffer: 256 * 1024 });
+  const probeCommand = probeUid === undefined ? command : "/bin/setpriv";
+  const probeArgs = probeUid === undefined ? args : ["--reuid=2000", "--regid=2000", "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", command, ...args];
+  const result = spawnSync(probeCommand, probeArgs, { cwd, env: { ...env, RIVET_PROBE_NAME: name }, encoding: "utf8", timeout, maxBuffer: 256 * 1024 });
   return probeResult(name, [path.basename(command), ...args].join(" "), result);
 }
 
 function probeResult(name, command, result) {
+  const error = result.error ? String(result.error.message || result.error) : "";
   return {
     name,
     command: command.slice(0, 400),
     exit_code: result.status ?? 1,
     timeout: result.error?.code === "ETIMEDOUT",
-    output: redact(`${result.stdout || ""}\n${result.stderr || ""}`).slice(0, 2048),
+    output: redact(`${result.stdout || ""}\n${result.stderr || ""}\n${error}`).slice(0, 2048),
   };
 }
 
@@ -166,6 +276,31 @@ function binEntries(manifest) {
     return { [String(manifest.name || "package").split("/").pop()]: manifest.bin };
   }
   return manifest.bin;
+}
+
+function packageEntry(packageDir, entry) {
+  const full = path.resolve(packageDir, entry);
+  return full.startsWith(packageDir + path.sep) ? full : null;
+}
+
+function binInvocation(file) {
+  const fd = fs.openSync(file, "r");
+  const head = Buffer.alloc(256);
+  let length;
+  try { length = fs.readSync(fd, head, 0, head.length, 0); }
+  finally { fs.closeSync(fd); }
+  const bytes = head.subarray(0, length);
+  const newline = bytes.indexOf(10);
+  const first = bytes.subarray(0, newline < 0 ? bytes.length : newline);
+  const shebang = first.subarray(0, 2).toString() === "#!";
+  const nodeShebang = shebang && first.toString("utf8").includes("node");
+  const native = bytes.subarray(0, 4).equals(Buffer.from([0x7f, 69, 76, 70]))
+    || bytes.subarray(0, 4).equals(Buffer.from([0xcf, 0xfa, 0xed, 0xfe]))
+    || bytes.subarray(0, 4).equals(Buffer.from([0xca, 0xfe, 0xba, 0xbe]));
+  if ([".js", ".cjs", ".mjs"].includes(path.extname(file)) || nodeShebang || (!native && !shebang)) {
+    return { command: process.execPath, args: [file] };
+  }
+  return { command: file, args: [] };
 }
 
 function readJson(file) {

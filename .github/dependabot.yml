@@ -8,3 +8,23 @@ updates:
       actions:
         patterns:
           - "*"
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust-compatible:
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /registry
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      go-compatible:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directories: [/audit-agent, /tools/e2e]
+    schedule:
+      interval: weekly

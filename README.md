@@ -74,6 +74,22 @@ rivet trust reset          forget the pinned key
 
 Useful flags: `--allow-network`, `--allow-write <path>`, `--allow-env <name>`, `--allow-scripts`, `--allow-fresh`, `--min-age-hours <n>`, `--require-provenance`, `--allow-unverified`, `--unsafe-allow-risk`, `--unsafe-allow-revoked`, `--unsafe-no-sandbox`, `--json`, `--events`, `--dry-run`.
 
+### Portable locks and peers
+
+Version 3 lockfiles pin separate dependency graphs for macOS and Linux on arm64
+and x64. Installation selects the current target and checks its pinned releases
+against fresh signed statements. `rivet install --frozen` preserves the lockfile
+and does not resolve replacement versions. A required package that excludes a
+target makes that target explicitly unsupported.
+
+Run `rivet install` once to replace a version 2 lockfile with version 3. A frozen
+install refuses version 2 and reports this migration step.
+
+Packages with different peer providers receive separate installed instances.
+Peer bindings are checked during frozen installation and before execution.
+Conflicting required peer ranges produce an error. The signed release identity
+remains `name@version`; contextual instance IDs belong to the installation graph.
+
 Project policy lives in `rivet.toml`:
 
 ```toml
@@ -82,7 +98,7 @@ min_release_age_hours = 72
 allow_scripts = ["esbuild"]     # run these install scripts, sandboxed
 allow_network = ["vite"]        # commands allowed to use the network
 require_provenance = false
-require_sandbox_audit = false   # currently fails closed: hook observations are untrusted
+require_sandbox_audit = false   # require a certified gVisor audit when true
 ```
 
 Public schemas:
@@ -93,6 +109,8 @@ Public schemas:
 - `rivet-manifest.schema.json`
 
 Architecture decisions live in `docs/adr/`. They cover the workspace metadata source, component boundaries, future Rivet-native workspace publishing, lockfile/resolver policy, audit trust policy, private registry precedence, and signed attestations with the run-time sandbox. `docs/security-review.md` records the security review findings, how each is tested, platform validation, run-time cost and the open limits.
+
+[Verification and compatibility work](docs/verification-compatibility-work.md) records the current performance experiments, acceptance checks, and review results. Reproducible hashing and verification benchmarks are in `tools/bench/`.
 
 ## Development
 
@@ -117,11 +135,25 @@ Registry settings:
 | `RIVET_ENV` | `development` | `production` requires an explicit signing key and a 32+ character token, and forbids the memory store |
 | `RIVET_SIGNING_KEY` / `RIVET_SIGNING_KEY_FILE` | `./data/signing.key` | base64 Ed25519 seed; generated on first start in development |
 | `RIVET_REGISTRY_TOKEN` / `RIVET_ADMIN_TOKEN` | | publisher and admin bearer tokens |
-| `RIVET_AUDIT_MODE` | `static` | `gvisor` adds dynamic audits (needs Docker with runsc and `make audit-agent-image`) |
+| `RIVET_AUDIT_MODE` | `static` | `gvisor` adds audits with a separate kernel-trace observer; see setup below |
+| `RIVET_AUDIT_AGENT_IMAGE` | `rivet-audit-agent:local` | trusted probe supervisor image |
+| `RIVET_AUDIT_OBSERVER_IMAGE` | `rivet-audit-observer:local` | separate trace collector image |
+| `RIVET_AUDIT_RUNSC_BIN` | `runsc` | host command or restricted helper used to inspect trace loss |
+| `RIVET_AUDIT_RUNSC_ROOT` | `/var/run/docker/runtime-runc/moby` | runtime state directory for the Docker daemon |
 | `RIVET_PUBLIC_MIRROR` | `false` | allow unauthenticated npm resolve/import requests |
 | `RIVET_VERIFY_PROVENANCE` | `true` | verify npm Sigstore provenance |
 | `RIVET_ATTESTATION_TTL_HOURS` | `168` | lifetime of signed statements |
 | `RIVET_NPM_UPSTREAM` | `https://registry.npmjs.org` | upstream npm registry |
+
+For gVisor audits, build both images with
+`make audit-agent-image audit-observer-image`. The Docker daemon must register
+`runsc` release `20260601.0` and permit the workload's `pod-init-config` annotation. The registry also
+needs a host trace-query helper with access to that daemon's runtime state.
+Missing permissions, lost events, incomplete probes, and unsupported observation
+paths prevent certification. UID 2000 is reserved for package probes; the registry
+must use another identity. Rivet does not change the daemon configuration.
+See [the audit trust policy](docs/adr/0005-audit-trust-policy.md) for deployment
+requirements and coverage limits.
 
 Use the CLI:
 
@@ -143,4 +175,14 @@ make audit-agent-check
 make registry-test-postgres   # needs RIVET_TEST_DATABASE_URL
 make e2e                      # live run against registry.npmjs.org, temp dir and $HOME
 tools/e2e/linux.sh            # CLI tests and e2e under real bubblewrap, in Docker
+python3 tools/e2e/compatibility.py # signed peers and native frozen installs across macOS/Linux
+tools/e2e/audit-trace.sh       # isolated privileged Docker-in-Docker gVisor gate
 ```
+
+## CI and deployment
+
+[Validation and CI evidence](docs/ci.md) describes the four-platform checks,
+portable locks, real-project corpus, live audit gates, and required branch check.
+[Registry deployment](docs/registry-deployment.md) walks through a small private
+Linux deployment, Railway alternatives, host permissions, persistence, backups,
+and cost controls.

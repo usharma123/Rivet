@@ -1,0 +1,339 @@
+diff --git a/cli/src/core/installed.rs b/cli/src/core/installed.rs
+--- a/cli/src/core/installed.rs
++++ b/cli/src/core/installed.rs
+@@ -215,20 +215,20 @@
+     }
+ }
+ 
+-/// Hash every installed package with bounded concurrency and memory. Results
+-/// retain input order so the first reported tamper remains deterministic.
+-fn verify_package_trees(packages: &[(String, PathBuf, String)]) -> Result<Duration> {
+-    const HASH_WORKERS: usize = 8;
+-    let started = Instant::now();
++/// Run independent verification work with bounded concurrency. Return errors
++/// in input order, regardless of which worker finishes first.
++fn parallel_map<T: Send, F: Fn(usize) -> Result<T> + Sync>(
++    len: usize,
++    action: &F,
++) -> Result<Vec<Result<T>>> {
++    const VERIFY_WORKERS: usize = 8;
+     let workers = std::thread::available_parallelism()
+         .map_or(1, std::num::NonZeroUsize::get)
+-        .min(HASH_WORKERS)
+-        .min(packages.len());
+-    let mut results: Vec<Option<Result<String>>> = std::iter::repeat_with(|| None)
+-        .take(packages.len())
+-        .collect();
++        .min(VERIFY_WORKERS)
++        .min(len);
++    let mut results: Vec<Option<Result<T>>> = std::iter::repeat_with(|| None).take(len).collect();
+     if workers == 0 {
+-        return Ok(started.elapsed());
++        return Ok(Vec::new());
+     }
+     let next = AtomicUsize::new(0);
+     std::thread::scope(|scope| -> Result<()> {
+@@ -239,17 +239,10 @@
+                 let mut output = Vec::new();
+                 loop {
+                     let index = next.fetch_add(1, Ordering::Relaxed);
+-                    if index >= packages.len() {
++                    if index >= len {
+                         break;
+                     }
+-                    output.push({
+-                        let (id, dir, _) = &packages[index];
+-                        (
+-                            index,
+-                            tree::tree_digest_of_dir(dir)
+-                                .with_context(|| format!("hash installed files of {id}")),
+-                        )
+-                    });
++                    output.push((index, action(index)));
+                 }
+                 output
+             }) {
+@@ -272,15 +265,29 @@
+             }
+         }
+         if let Some(err) = spawn_error {
+-            return Err(err).context("spawn installed file hashing worker");
++            return Err(err).context("spawn verification worker");
+         }
+         if panicked {
+-            bail!("installed file hashing worker panicked");
++            bail!("verification worker panicked");
+         }
+         Ok(())
+     })?;
++    results
++        .into_iter()
++        .map(|result| result.context("missing verification worker result"))
++        .collect()
++}
++
++/// Hash every installed package with bounded concurrency and memory. Results
++/// retain input order so the first reported tamper remains deterministic.
++fn verify_package_trees(packages: &[(String, PathBuf, String)]) -> Result<Duration> {
++    let started = Instant::now();
++    let results = parallel_map(packages.len(), &|index| {
++        let (id, dir, _) = &packages[index];
++        tree::tree_digest_of_dir(dir).with_context(|| format!("hash installed files of {id}"))
++    })?;
+     for ((id, dir, expected), result) in packages.iter().zip(results) {
+-        let actual = result.context("missing installed file hash")??;
++        let actual = result?;
+         if actual != *expected {
+             bail!(
+                 "installed files of {id} were modified after install ({}); run `rivet install` to restore them",
+@@ -330,40 +337,77 @@
+             }
+         };
+         timings.fetch = fetch_started.elapsed();
++        let mut cache_jobs = Vec::new();
++        let mut statement_errors = BTreeMap::new();
++        for id in &ids {
++            let statement = (|| -> Result<Statement> {
++                let locked = state
++                    .lock
++                    .packages
++                    .get(id)
++                    .with_context(|| format!("{id} is not in the installed graph"))?;
++                match fresh.as_ref().and_then(|b| b.attestations.get(id)) {
++                    Some(envelope) => {
++                        let statement = envelope.verify(self.key, now)?;
++                        cache_jobs.push((id.clone(), envelope));
++                        Ok(statement)
++                    }
++                    None => {
++                        if let Some(err) = fresh.as_ref().and_then(|b| b.errors.get(id)) {
++                            bail!("registry no longer serves {id}: {err}");
++                        }
++                        let (_, envelope) = self
++                            .store
++                            .cached_attestation(&locked.name, &locked.version, self.key)?
++                            .with_context(|| {
++                                format!("no cached attestation for {id}; reconnect to the registry")
++                            })?;
++                        envelope.verify(self.key, now)
++                    }
++                }
++            })();
++            match statement {
++                Ok(statement) => {
++                    report.statements.insert(id.clone(), statement);
++                }
++                Err(err) => {
++                    statement_errors.insert(id.clone(), err);
++                }
++            }
++        }
++        // Persist every freshly signed state, including a revocation, before
++        // policy can reject it. Offline execution must not see an older active
++        // statement after a failed online verification.
++        let cache_results = parallel_map(cache_jobs.len(), &|index| {
++            let (id, envelope) = &cache_jobs[index];
++            self.store
++                .cache_attestation(&report.statements[id], envelope, self.key)
++        })?;
++        let mut cache_errors = BTreeMap::new();
++        for ((id, _), result) in cache_jobs.into_iter().zip(cache_results) {
++            if let Err(err) = result {
++                cache_errors.insert(id, err);
++            }
++        }
++        for id in &ids {
++            if let Some(err) = statement_errors
++                .remove(id)
++                .or_else(|| cache_errors.remove(id))
++            {
++                return Err(err);
++            }
++        }
+         let mut packages_to_hash = Vec::with_capacity(ids.len());
+         for id in &ids {
+-            let locked = state
+-                .lock
+-                .packages
+-                .get(id)
+-                .with_context(|| format!("{id} is not in the installed graph"))?;
+-            let statement = match fresh.as_ref().and_then(|b| b.attestations.get(id)) {
+-                Some(envelope) => {
+-                    let statement = envelope.verify(self.key, now)?;
+-                    self.store
+-                        .cache_attestation(&statement, envelope, self.key)?;
+-                    statement
+-                }
+-                None => {
+-                    if let Some(err) = fresh.as_ref().and_then(|b| b.errors.get(id)) {
+-                        bail!("registry no longer serves {id}: {err}");
+-                    }
+-                    let (_, envelope) = self
+-                        .store
+-                        .cached_attestation(&locked.name, &locked.version, self.key)?
+-                        .with_context(|| {
+-                            format!("no cached attestation for {id}; reconnect to the registry")
+-                        })?;
+-                    envelope.verify(self.key, now)?
+-                }
+-            };
++            let locked = &state.lock.packages[id];
++            let statement = &report.statements[id];
+             if statement.id() != *id
+                 || statement.artifact.hash != locked.artifact
+                 || statement.artifact.tree_digest != locked.tree_digest
+             {
+                 bail!("signed identity of {id} no longer matches what is installed; reinstall");
+             }
+-            report.warnings.extend(self.policy.check(&statement, true)?);
++            report.warnings.extend(self.policy.check(statement, true)?);
+             let dir = package_path(root, id, &locked.name);
+             let expected = state
+                 .script_modified
+@@ -371,7 +415,6 @@
+                 .cloned()
+                 .unwrap_or_else(|| locked.tree_digest.clone());
+             packages_to_hash.push((id.clone(), dir, expected));
+-            report.statements.insert(id.clone(), statement);
+         }
+         timings.hash = verify_package_trees(&packages_to_hash)?;
+         for (command, target) in &state.bins {
+@@ -612,6 +655,138 @@
+             );
+             server.join().unwrap();
+         }
++    }
++
++    #[test]
++    fn fresh_revocation_blocks_later_offline_verification() {
++        let fx = Fixture::new(CommonFlags::default());
++        let graph = fixture_graph(&fx.store, 'a', None);
++        let active = graph.nodes["demo@1.0.0"].statement.clone();
++        let mut revoked = active.clone();
++        revoked.state = "revoked".into();
++        revoked.issued_at = "2026-09-26T00:00:00Z".into();
++        let (client, server) = serve_once(attestations_body(&fx, &[&revoked]));
++        fx.linker(&client, false)
++            .link(&fx.project, &graph, &fx.store.registry)
++            .unwrap();
++        fx.store
++            .cache_attestation(&active, &seal(&fx.signing, &fx.key.keyid, &active), &fx.key)
++            .unwrap();
++        let state = read_state(&fx.project).unwrap().unwrap();
++        let online_error = verifier(&fx, &client)
++            .verify(&fx.project, &state)
++            .unwrap_err()
++            .to_string();
++        assert!(online_error.contains("revoked"), "{online_error}");
++        server.join().unwrap();
++
++        let offline_client = fx.offline_client();
++        let offline_error = verifier(&fx, &offline_client)
++            .verify(&fx.project, &state)
++            .unwrap_err()
++            .to_string();
++        assert!(offline_error.contains("revoked"), "{offline_error}");
++    }
++
++    #[test]
++    fn fresh_revocation_is_cached_when_later_release_has_registry_error() {
++        let fx = Fixture::new(CommonFlags::default());
++        let mut graph = fixture_graph(&fx.store, 'a', None);
++        let mut sibling = sample_statement("sibling", "1.0.0");
++        sibling.artifact.hash = format!("sha512-{}", "b".repeat(128));
++        let sibling_dir = fx.store.package_dir(&sibling.artifact.hash).unwrap();
++        fs::create_dir_all(&sibling_dir).unwrap();
++        fs::write(sibling_dir.join("index.js"), "module.exports = 'safe';\n").unwrap();
++        sibling.artifact.tree_digest = tree::tree_digest_of_dir(&sibling_dir).unwrap();
++        graph.roots.insert(
++            "sibling".into(),
++            LockedRoot {
++                spec: "1.0.0".into(),
++                package: sibling.id(),
++            },
++        );
++        graph
++            .nodes
++            .insert(sibling.id(), unsigned_node(sibling.clone()));
++        let offline_client = fx.offline_client();
++        fx.linker(&offline_client, false)
++            .link(&fx.project, &graph, &fx.store.registry)
++            .unwrap();
++        let active = graph.nodes["demo@1.0.0"].statement.clone();
++        for statement in [&active, &sibling] {
++            fx.store
++                .cache_attestation(
++                    statement,
++                    &seal(&fx.signing, &fx.key.keyid, statement),
++                    &fx.key,
++                )
++                .unwrap();
++        }
++        let mut revoked = active.clone();
++        revoked.state = "revoked".into();
++        revoked.issued_at = "2026-09-26T00:00:00Z".into();
++        let mut body: serde_json::Value =
++            serde_json::from_str(&attestations_body(&fx, &[&revoked])).unwrap();
++        body["errors"] = serde_json::json!({"sibling@1.0.0": "temporarily unavailable"});
++        let (client, server) = serve_once(body.to_string());
++        let state = read_state(&fx.project).unwrap().unwrap();
++        let online_error = verifier(&fx, &client)
++            .verify(&fx.project, &state)
++            .unwrap_err()
++            .to_string();
++        assert!(
++            online_error.contains("temporarily unavailable"),
++            "{online_error}"
++        );
++        server.join().unwrap();
++
++        let offline_error = verifier(&fx, &offline_client)
++            .verify(&fx.project, &state)
++            .unwrap_err()
++            .to_string();
++        assert!(offline_error.contains("revoked"), "{offline_error}");
++    }
++
++    #[test]
++    fn parallel_cache_keeps_newer_revocation_when_late_job_rolls_back() {
++        let fx = Fixture::new(CommonFlags::default());
++        let statements: Vec<Statement> = (0..12)
++            .map(|index| sample_statement(&format!("package-{index}"), "1.0.0"))
++            .collect();
++        let envelopes: Vec<_> = statements
++            .iter()
++            .map(|statement| seal(&fx.signing, &fx.key.keyid, statement))
++            .collect();
++        let mut revoked = statements[10].clone();
++        revoked.state = "revoked".into();
++        revoked.issued_at = "2026-09-26T00:00:00Z".into();
++        fx.store
++            .cache_attestation(
++                &revoked,
++                &seal(&fx.signing, &fx.key.keyid, &revoked),
++                &fx.key,
++            )
++            .unwrap();
++
++        let results = parallel_map(statements.len(), &|index| {
++            fx.store
++                .cache_attestation(&statements[index], &envelopes[index], &fx.key)
++        })
++        .unwrap();
++        let errors: Vec<_> = results
++            .into_iter()
++            .enumerate()
++            .filter_map(|(index, result)| result.err().map(|err| (index, err.to_string())))
++            .collect();
++        assert_eq!(errors.len(), 1);
++        assert_eq!(errors[0].0, 10);
++        assert!(errors[0].1.contains("rollback"), "{:?}", errors[0]);
++        let (cached, _) = fx
++            .store
++            .cached_attestation(&revoked.name, &revoked.version, &fx.key)
++            .unwrap()
++            .unwrap();
++        assert_eq!(cached.state, "revoked");
+     }
+ 
+     #[test]

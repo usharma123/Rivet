@@ -3,7 +3,8 @@
     {
       "docs": [
         "README.md",
-        "docs/adr/0005-audit-trust-policy.md"
+        "docs/adr/0005-audit-trust-policy.md",
+        "docs/verification-compatibility-work.md"
       ],
       "id": "audit-agent",
       "kind": "sandbox-agent",
@@ -12,9 +13,10 @@
       ],
       "path": "audit-agent",
       "public_interfaces": [
-        "gVisor audit container contract (no network, honeytokens, egress hook)",
-        "signed registry audit evidence shape",
-        "Node dynamic audit-agent image"
+        "gVisor package workload and trusted host runsc trace contract",
+        "independent runc SecCheck observer with nonce and completion evidence",
+        "signed registry audit evidence shape with fail-closed collection",
+        "Node workload image and Python observer image"
       ],
       "release_group": "audit",
       "schemas": [
@@ -29,7 +31,8 @@
         "README.md",
         "docs/adr/0004-lockfile-resolver-policy.md",
         "docs/adr/0007-signed-attestations-and-runtime-sandbox.md",
-        "docs/security-review.md"
+        "docs/security-review.md",
+        "docs/verification-compatibility-work.md"
       ],
       "id": "cli",
       "kind": "rust-cli",
@@ -40,7 +43,7 @@
       "public_interfaces": [
         "rivet command surface",
         "rivet.toml project manifest and [policy] behavior",
-        "rivet.lock v2 project lockfile behavior",
+        "rivet.lock v3 portable target graphs and contextual peer bindings",
         "local content-addressed store layout",
         "node_modules virtual-store layout and .bin shims",
         "registry key pinning (trust on first use)",
@@ -264,8 +267,10 @@
         "workspace.snapshot.json",
         "tools/workspace/**",
         "tools/e2e/**",
+        "tools/bench/**",
         "docs/adr/**",
         "docs/security-review.md",
+        "docs/verification-compatibility-work.md",
         ".github/**",
         "Makefile",
         "README.md"

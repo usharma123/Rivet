@@ -2,8 +2,12 @@ package audit
 
 import (
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"github.com/usharma123/rivet/registry/internal/canon"
@@ -70,6 +74,9 @@ func (p *Pipeline) Audit(ctx context.Context, in Input) (registry.AuditRecord, e
 		if err := json.Unmarshal(in.Version.Manifest, &parsed); err != nil {
 			return registry.AuditRecord{}, fmt.Errorf("decode authoritative audit manifest: %w", err)
 		}
+		if parsed.Name != in.Version.Name || parsed.Version != in.Version.Version {
+			return registry.AuditRecord{}, fmt.Errorf("authoritative audit manifest identity mismatch")
+		}
 		normalized = &parsed
 	}
 	evidence := Evidence{
@@ -105,9 +112,10 @@ func (p *Pipeline) Audit(ctx context.Context, in Input) (registry.AuditRecord, e
 		}
 	}
 
-	// Dynamic observations are written by the package's own UID, so they are
-	// recorded but never trusted: the audit is always certified as static.
+	// Probe results are advisory. Only DockerRunner's private collector can
+	// provide validated kernel observations and certify the sandbox run.
 	image := "in-process"
+	trustedSandbox := false
 	if p.Sandbox != nil {
 		dynamic, err := p.Sandbox.Run(ctx, in.Version, in.ArtifactPath)
 		if err != nil {
@@ -120,11 +128,22 @@ func (p *Pipeline) Audit(ctx context.Context, in Input) (registry.AuditRecord, e
 		image = p.Sandbox.Image()
 		evidence.Sandbox = map[string]string{"runtime": registry.SandboxStatic, "attempted_runtime": p.Sandbox.Runtime(), "network": "none", "observations": "package-tamperable"}
 		evidence.Agent = dynamic.Agent
+		if dynamic.validatedTrace != nil {
+			if err := validateTrustedInput(dynamic.validatedTrace, in); err != nil {
+				return registry.AuditRecord{}, fmt.Errorf("sandbox trace input mismatch: %w", err)
+			}
+			trustedSandbox = true
+			evidence.Sandbox = map[string]string{"runtime": registry.SandboxGVisor, "network": "none", "observations": "gvisor-kernel-trace", "trace_container_id": dynamic.validatedTrace.containerID, "artifact_hash": dynamic.validatedTrace.artifactHash, "tree_digest": dynamic.validatedTrace.treeDigest, "manifest_sha512": dynamic.validatedTrace.manifestHash}
+		}
 	}
 
 	trustedForScore := evidence
-	trustedForScore.Egress = nil
-	trustedForScore.Honeytokens = nil
+	trustedForScore.SafeProbes = nil
+	trustedForScore.Adversarial = nil
+	if !trustedSandbox {
+		trustedForScore.Egress = nil
+		trustedForScore.Honeytokens = nil
+	}
 	score := ScoreEvidence(trustedForScore)
 	completed := now()
 	record := registry.AuditRecord{
@@ -142,12 +161,38 @@ func (p *Pipeline) Audit(ctx context.Context, in Input) (registry.AuditRecord, e
 		StartedAt:      started,
 		CompletedAt:    &completed,
 	}
+	if trustedSandbox {
+		record.SandboxRuntime = registry.SandboxGVisor
+	}
 	signature, err := SignAudit(record, p.Signer)
 	if err != nil {
 		return registry.AuditRecord{}, err
 	}
 	record.Signature = signature
 	return record, nil
+}
+
+func validateTrustedInput(trace *validatedTrace, in Input) error {
+	if trace == nil || trace.containerID == "" || trace.nonce == "" || trace.packageName != in.Version.Name || trace.version != in.Version.Version || trace.treeDigest == "" || trace.manifestHash != sha512Hex(in.Version.Manifest) {
+		return fmt.Errorf("identity or manifest differs from trace")
+	}
+	if in.Package == nil || trace.treeDigest != in.Package.TreeDigest || (in.Version.TreeDigest != "" && trace.treeDigest != in.Version.TreeDigest) {
+		return fmt.Errorf("package tree differs from trace")
+	}
+	file, err := os.Open(in.ArtifactPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	h := sha512.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return err
+	}
+	artifactHash := "sha512-" + hex.EncodeToString(h.Sum(nil))
+	if trace.artifactHash != artifactHash || (in.Version.ArtifactHash != "" && in.Version.ArtifactHash != artifactHash) {
+		return fmt.Errorf("artifact differs from trace")
+	}
+	return nil
 }
 
 func costCents(dynamic bool) int {

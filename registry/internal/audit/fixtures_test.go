@@ -180,7 +180,8 @@ func TestNodeAgentDetectsHoneytokenTheft(t *testing.T) {
 		"RIVET_ADVERSARIAL_TIMEOUT_MS=10000",
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("agent failed: %v\n%s", err, out)
+		evidence, readErr := os.ReadFile(filepath.Join(work, "evidence", "evidence.json"))
+		t.Fatalf("agent failed: %v\n%s\nevidence (read error %v): %s", err, out, readErr, evidence)
 	}
 	evidence, err := readEvidence(filepath.Join(work, "evidence", "evidence.json"))
 	if err != nil {

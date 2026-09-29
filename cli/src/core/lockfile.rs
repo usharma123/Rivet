@@ -1,14 +1,25 @@
-//! rivet.lock v2: the fully resolved dependency graph, pinned to artifact
-//! hashes and tree digests signed by one registry key.
+//! rivet.lock v3: pinned graphs for the supported runtime targets.
 
 use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-pub const LOCKFILE_VERSION: u8 = 2;
+pub const LOCKFILE_VERSION: u8 = 3;
+
+pub const TARGETS: [&str; 4] = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct LockVariant {
+    pub roots: BTreeMap<String, LockedRoot>,
+    pub packages: BTreeMap<String, LockedPackage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsupported: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Lockfile {
     pub version: u8,
     #[serde(default)]
@@ -19,15 +30,20 @@ pub struct Lockfile {
     pub roots: BTreeMap<String, LockedRoot>,
     #[serde(default)]
     pub packages: BTreeMap<String, LockedPackage>,
+    /// Complete target-specific graphs. Empty only in an installed receipt.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub variants: BTreeMap<String, LockVariant>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct LockedRoot {
     pub spec: String,
     pub package: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct LockedPackage {
     pub name: String,
     pub version: String,
@@ -38,6 +54,9 @@ pub struct LockedPackage {
     pub provenance: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, String>,
+    /// Peer alias to contextual provider instance, separate from signed release id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub peer_bindings: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub optional: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -52,13 +71,13 @@ impl Default for Lockfile {
             registry_key: String::new(),
             roots: BTreeMap::new(),
             packages: BTreeMap::new(),
+            variants: BTreeMap::new(),
         }
     }
 }
 
 impl Lockfile {
-    /// Reads a lockfile. Returns None for missing or pre-v2 lockfiles, which
-    /// carry no signed identities and must be re-resolved.
+    /// Reads a lockfile. Version 2 is returned for explicit migration handling.
     pub fn read_current(path: &Path) -> Result<Option<Self>> {
         if !path.exists() {
             return Ok(None);
@@ -66,8 +85,8 @@ impl Lockfile {
         let data = fs::read_to_string(path)?;
         let value: serde_json::Value =
             serde_json::from_str(&data).with_context(|| format!("parse {}", path.display()))?;
-        if value.get("version").and_then(serde_json::Value::as_u64) != Some(LOCKFILE_VERSION as u64)
-        {
+        let version = value.get("version").and_then(serde_json::Value::as_u64);
+        if !matches!(version, Some(2 | 3)) {
             return Ok(None);
         }
         Ok(Some(serde_json::from_value(value)?))
@@ -104,12 +123,61 @@ impl Lockfile {
 
     /// True when every manifest dependency is locked with the same spec.
     pub fn satisfies(&self, dependencies: &BTreeMap<String, String>) -> bool {
-        dependencies.len() == self.roots.len()
-            && dependencies.iter().all(|(alias, spec)| {
-                self.roots.get(alias).is_some_and(|root| {
-                    &root.spec == spec && self.packages.contains_key(&root.package)
-                })
+        if self.version != LOCKFILE_VERSION
+            || self.variants.len() != TARGETS.len()
+            || self.registry.is_empty()
+            || self.registry_key.is_empty()
+            || !self.roots.is_empty()
+            || !self.packages.is_empty()
+        {
+            return false;
+        }
+        TARGETS.iter().all(|target| {
+            self.variants.get(*target).is_some_and(|variant| {
+                (variant.unsupported.is_none()
+                    || (variant.roots.is_empty() && variant.packages.is_empty()))
+                    && (variant.unsupported.is_some() || variant.roots.len() == dependencies.len())
+                    && dependencies.iter().all(|(alias, spec)| {
+                        variant.unsupported.is_some()
+                            || variant.roots.get(alias).is_some_and(|root| {
+                                &root.spec == spec && variant.packages.contains_key(&root.package)
+                            })
+                    })
             })
+        })
+    }
+
+    pub fn selected(&self, target: &str) -> Result<Self> {
+        if self.version != LOCKFILE_VERSION {
+            anyhow::bail!("rivet.lock v2 has no portable target pins; run `rivet install` to regenerate v3 before using --frozen");
+        }
+        if self.registry.is_empty() || self.registry_key.is_empty() {
+            anyhow::bail!("portable rivet.lock must pin its registry and signing key");
+        }
+        if self.variants.len() != TARGETS.len()
+            || TARGETS
+                .iter()
+                .any(|target| !self.variants.contains_key(*target))
+        {
+            anyhow::bail!("portable rivet.lock is missing a supported target graph");
+        }
+        if !self.roots.is_empty() || !self.packages.is_empty() {
+            anyhow::bail!("portable rivet.lock contains host-specific top-level graph data");
+        }
+        let variant = self.variants.get(target).with_context(|| {
+            format!("rivet.lock has no pinned graph for {target}; run `rivet install` on a supported target")
+        })?;
+        if let Some(reason) = &variant.unsupported {
+            anyhow::bail!("rivet.lock marks {target} unsupported: {reason}");
+        }
+        Ok(Self {
+            version: self.version,
+            registry: self.registry.clone(),
+            registry_key: self.registry_key.clone(),
+            roots: variant.roots.clone(),
+            packages: variant.packages.clone(),
+            variants: BTreeMap::new(),
+        })
     }
 }
 
@@ -121,7 +189,11 @@ mod tests {
     fn lockfile_round_trips_and_detects_staleness() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("rivet.lock");
-        let mut lock = Lockfile::default();
+        let mut lock = Lockfile {
+            registry: "https://registry.example.test".into(),
+            registry_key: "test-key".into(),
+            ..Lockfile::default()
+        };
         lock.roots.insert(
             "prettier".into(),
             LockedRoot {
@@ -140,10 +212,23 @@ mod tests {
                 verdict: "low".into(),
                 provenance: "absent".into(),
                 dependencies: BTreeMap::new(),
+                peer_bindings: BTreeMap::new(),
                 optional: false,
                 install_scripts: vec![],
             },
         );
+        for target in TARGETS {
+            lock.variants.insert(
+                target.into(),
+                LockVariant {
+                    roots: lock.roots.clone(),
+                    packages: lock.packages.clone(),
+                    unsupported: None,
+                },
+            );
+        }
+        lock.roots.clear();
+        lock.packages.clear();
         lock.write_to(&path).unwrap();
         let read = Lockfile::read_current(&path).unwrap().unwrap();
         assert_eq!(read, lock);

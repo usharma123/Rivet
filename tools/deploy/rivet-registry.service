@@ -1,0 +1,23 @@
+[Unit]
+Description=Rivet registry
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=rivet-registry
+Group=rivet-registry
+SupplementaryGroups=docker
+WorkingDirectory=/var/lib/rivet
+EnvironmentFile=/etc/rivet/registry.env
+ExecStart=/usr/local/bin/rivet-registry
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+# Audit bind mounts must refer to host-visible paths. Do not use PrivateTmp.
+# The narrow sudo helper needs privilege elevation. Do not set NoNewPrivileges.
+
+[Install]
+WantedBy=multi-user.target

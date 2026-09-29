@@ -1,0 +1,57 @@
+{
+  "date": "2026-09-29",
+  "command": "python3 -u tools/e2e/compatibility.py --keep",
+  "exit_code": 0,
+  "harness_updated_after_run": "Reverse Linux runtime label now reads process.platform and process.arch, and default invocation always rebuilds the release CLI. The full suite was not rerun for these harness changes.",
+  "base_commit": "f2c3c0d1c0075b92b08eb45beae806a3ac7a5f96",
+  "source_sha256": {
+    "cli_src_tree_at_run": "ac196a3907add2e57f45d522a41884f0076f27955afb827455abde0240d91e6f",
+    "registry_tree_after_run": "4609b5b53fb99211b883b492904216dceaa0f7feec59284383540b1618395222"
+  },
+  "registry_source_changed_after_binary_build": [
+    "registry/internal/audit/trace.go",
+    "registry/internal/audit/docker.go",
+    "registry/internal/audit/trusted_test.go"
+  ],
+  "binary_sha256": {
+    "mac_cli": "77d3a2eadafa6e0b893aad01338dd267cd1d322d7f44d5388a08fdb2321adc9b",
+    "linux_cli": "57e71506a3424ea94e0c84f9f07e345321d3e844302615332326c6e647ae7504",
+    "registry": "527489c0c1b7c8fca4a680442b5bab8a102761af8276554868af0ac8c8212bbb"
+  },
+  "signed_fixture": {
+    "lock_sha256_before_and_after_cold_frozen": "0c47b031907dfbe886ca8ba3e42a0f89b67c2f19d3c8367a8c0c2e7699835c35",
+    "contextual_plugin_instances": 2,
+    "installed_packages_verified_per_command": 6,
+    "checks": [
+      "Node loads plugin with core 1 and core 2 through distinct parents and npm aliases",
+      "Contextual IDs, release ID and root alias verify the full installed graph before and after cold frozen reinstall",
+      "Forged peer binding fails frozen install",
+      "Compatible peer ranges choose core 2 and incompatible provider fails",
+      "Optional peer absent and present, cyclic peer graph, overlapping optional alias"
+    ]
+  },
+  "real_npm_esbuild_0_25_0": {
+    "mac_origin_lock_sha256": "4a25eb54d81a2dc0125528ead2952a064631b14643fe4cd349e8ae8c98f87ee9",
+    "linux_origin_lock_sha256": "4a25eb54d81a2dc0125528ead2952a064631b14643fe4cd349e8ae8c98f87ee9",
+    "mac_to_linux_to_mac_native": [
+      "NATIVE_OK darwin-arm64",
+      "NATIVE_OK linux-arm64",
+      "NATIVE_OK darwin-arm64"
+    ],
+    "linux_to_mac_native": [
+      "NATIVE_OK linux-arm64 (recorded literal after native transform)",
+      "NATIVE_OK darwin-arm64"
+    ],
+    "reverse_linux_recorded_platform_label_was_literal": true,
+    "linux_arm64_runtime_reported_by_process_in_mac_to_linux_leg": true,
+    "frozen_resolve_calls": {
+      "linux_from_mac": 0,
+      "mac_return": 0,
+      "mac_from_linux": 0
+    },
+    "lock_bytes_changed_during_frozen_install": false
+  },
+  "runtime_targets_checked": ["darwin-arm64", "linux-arm64"],
+  "lock_targets_present_but_not_run": ["darwin-x64", "linux-x64"],
+  "request_trace_total": 132
+}

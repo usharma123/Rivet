@@ -3,7 +3,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
 
@@ -12,13 +13,16 @@ use anyhow::{bail, Context, Result};
 use super::{
     attestation::{Statement, TrustedKey},
     linker::{
-        modules_dir, package_path, relative_path, validate_command, validate_entry, InstalledState,
-        STATE_FILE,
+        modules_dir, package_path, relative_path, slot_id, validate_command, validate_entry,
+        InstalledState, STATE_FILE,
     },
     policy::Policy,
     registry_client::RegistryClient,
-    resolver::{package_scope, parse_spec, validate_package_name, version_satisfies},
-    store::{safe_id, LocalStore},
+    resolver::{
+        current_platform, package_scope, parse_spec, platform_matches,
+        validate_contextual_lock_graph, validate_package_name, version_satisfies, Graph, Node,
+    },
+    store::LocalStore,
     tree,
 };
 
@@ -57,7 +61,7 @@ fn validate_installed_links(root: &Path, state: &InstalledState) -> Result<()> {
         }
     }
     let expected_slots: BTreeSet<String> =
-        state.lock.packages.keys().map(|id| safe_id(id)).collect();
+        state.lock.packages.keys().map(|id| slot_id(id)).collect();
     for entry in fs::read_dir(&virtual_dir)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -67,7 +71,7 @@ fn validate_installed_links(root: &Path, state: &InstalledState) -> Result<()> {
     }
     for (id, package) in &state.lock.packages {
         validate_package_name(&package.name)?;
-        let slot = virtual_dir.join(safe_id(id));
+        let slot = virtual_dir.join(slot_id(id));
         let deps_dir = slot.join("node_modules");
         plain_dir(&slot)?;
         plain_dir(&deps_dir)?;
@@ -199,10 +203,6 @@ struct VerifyDurations {
 }
 
 impl VerifyDurations {
-    fn record_hash(&mut self, elapsed: Duration) {
-        self.hash += elapsed;
-    }
-
     fn finish(self, total: Duration) -> VerifyTimings {
         let total_ms = total.as_millis();
         let layout_ms = self.layout.as_millis();
@@ -218,6 +218,89 @@ impl VerifyDurations {
     }
 }
 
+/// Run independent verification work with bounded concurrency. Return errors
+/// in input order, regardless of which worker finishes first.
+fn parallel_map<T: Send, F: Fn(usize) -> Result<T> + Sync>(
+    len: usize,
+    action: &F,
+) -> Result<Vec<Result<T>>> {
+    const VERIFY_WORKERS: usize = 8;
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .min(VERIFY_WORKERS)
+        .min(len);
+    let mut results: Vec<Option<Result<T>>> = std::iter::repeat_with(|| None).take(len).collect();
+    if workers == 0 {
+        return Ok(Vec::new());
+    }
+    let next = AtomicUsize::new(0);
+    std::thread::scope(|scope| -> Result<()> {
+        let mut handles = Vec::with_capacity(workers);
+        let mut spawn_error = None;
+        for _ in 0..workers {
+            match std::thread::Builder::new().spawn_scoped(scope, || {
+                let mut output = Vec::new();
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    if index >= len {
+                        break;
+                    }
+                    output.push((index, action(index)));
+                }
+                output
+            }) {
+                Ok(handle) => handles.push(handle),
+                Err(err) => {
+                    spawn_error = Some(err);
+                    break;
+                }
+            }
+        }
+        let mut panicked = false;
+        for handle in handles {
+            match handle.join() {
+                Ok(output) => {
+                    for (index, result) in output {
+                        results[index] = Some(result);
+                    }
+                }
+                Err(_) => panicked = true,
+            }
+        }
+        if let Some(err) = spawn_error {
+            return Err(err).context("spawn verification worker");
+        }
+        if panicked {
+            bail!("verification worker panicked");
+        }
+        Ok(())
+    })?;
+    results
+        .into_iter()
+        .map(|result| result.context("missing verification worker result"))
+        .collect()
+}
+
+/// Hash every installed package with bounded concurrency and memory. Results
+/// retain input order so the first reported tamper remains deterministic.
+fn verify_package_trees(packages: &[(String, PathBuf, String)]) -> Result<Duration> {
+    let started = Instant::now();
+    let results = parallel_map(packages.len(), &|index| {
+        let (id, dir, _) = &packages[index];
+        tree::tree_digest_of_dir(dir).with_context(|| format!("hash installed files of {id}"))
+    })?;
+    for ((id, dir, expected), result) in packages.iter().zip(results) {
+        let actual = result?;
+        if actual != *expected {
+            bail!(
+                "installed files of {id} were modified after install ({}); run `rivet install` to restore them",
+                dir.display()
+            );
+        }
+    }
+    Ok(started.elapsed())
+}
+
 impl Verifier<'_> {
     pub fn verify(&self, root: &Path, state: &InstalledState) -> Result<VerifyReport> {
         let started = Instant::now();
@@ -227,6 +310,11 @@ impl Verifier<'_> {
             .context("installed tree has no trusted receipt; reinstall")?;
         if &receipt != state {
             bail!("installed state differs from trusted install receipt; reinstall");
+        }
+        // Session::open derives the store from the active client URL. The
+        // receipt pins both that registry and its trusted signing key.
+        if state.lock.registry != self.store.registry || state.lock.registry_key != self.key.keyid {
+            bail!("installed receipt belongs to another registry or signing key; reinstall");
         }
         validate_installed_links(root, state)?;
         let mut timings = VerifyDurations {
@@ -238,11 +326,20 @@ impl Verifier<'_> {
         let ids: BTreeSet<String> = state.lock.packages.keys().cloned().collect();
         let now = time::OffsetDateTime::now_utc();
         let mut report = VerifyReport::default();
-        let wanted: Vec<(String, String)> = ids
-            .iter()
-            .filter_map(|id| state.lock.packages.get(id))
-            .map(|p| (p.name.clone(), p.version.clone()))
+        // Contextual instances can share one signed release. Fetch, verify,
+        // and cache that release once; check every installed instance below.
+        let releases: BTreeMap<String, (String, String)> = state
+            .lock
+            .packages
+            .values()
+            .map(|p| {
+                (
+                    format!("{}@{}", p.name, p.version),
+                    (p.name.clone(), p.version.clone()),
+                )
+            })
             .collect();
+        let wanted: Vec<(String, String)> = releases.values().cloned().collect();
         let fetch_started = Instant::now();
         let fresh = match self.client.attestations(&wanted) {
             Ok(batch) => {
@@ -257,57 +354,92 @@ impl Verifier<'_> {
             }
         };
         timings.fetch = fetch_started.elapsed();
-        for id in &ids {
-            let locked = state
-                .lock
-                .packages
-                .get(id)
-                .with_context(|| format!("{id} is not in the installed graph"))?;
-            let statement = match fresh.as_ref().and_then(|b| b.attestations.get(id)) {
-                Some(envelope) => {
-                    let statement = envelope.verify(self.key, now)?;
-                    self.store
-                        .cache_attestation(&statement, envelope, self.key)?;
-                    statement
-                }
-                None => {
-                    if let Some(err) = fresh.as_ref().and_then(|b| b.errors.get(id)) {
-                        bail!("registry no longer serves {id}: {err}");
+        let mut release_statements = BTreeMap::new();
+        let mut statement_errors = BTreeMap::new();
+        let mut cache_jobs = Vec::new();
+        for (release_id, (name, version)) in &releases {
+            let statement = (|| -> Result<Statement> {
+                match fresh.as_ref().and_then(|b| b.attestations.get(release_id)) {
+                    Some(envelope) => {
+                        let statement = envelope.verify(self.key, now)?;
+                        cache_jobs.push((release_id.clone(), envelope));
+                        Ok(statement)
                     }
-                    let (_, envelope) = self
-                        .store
-                        .cached_attestation(&locked.name, &locked.version, self.key)?
-                        .with_context(|| {
-                            format!("no cached attestation for {id}; reconnect to the registry")
-                        })?;
-                    envelope.verify(self.key, now)?
+                    None => {
+                        if let Some(err) = fresh.as_ref().and_then(|b| b.errors.get(release_id)) {
+                            bail!("registry no longer serves {release_id}: {err}");
+                        }
+                        let (_, envelope) = self
+                            .store
+                            .cached_attestation(name, version, self.key)?
+                            .with_context(|| {
+                                format!(
+                                    "no cached attestation for {release_id}; reconnect to the registry"
+                                )
+                            })?;
+                        envelope.verify(self.key, now)
+                    }
                 }
-            };
-            if statement.id() != *id
+            })();
+            match statement {
+                Ok(statement) => {
+                    release_statements.insert(release_id.clone(), statement);
+                }
+                Err(err) => {
+                    statement_errors.insert(release_id.clone(), err);
+                }
+            }
+        }
+        // Persist every freshly signed state, including a revocation, before
+        // any error or policy rejection can leave an older active cache entry.
+        let cache_results = parallel_map(cache_jobs.len(), &|index| {
+            let (release_id, envelope) = &cache_jobs[index];
+            self.store
+                .cache_attestation(&release_statements[release_id], envelope, self.key)
+        })?;
+        let mut cache_errors = BTreeMap::new();
+        for ((release_id, _), result) in cache_jobs.into_iter().zip(cache_results) {
+            if let Err(err) = result {
+                cache_errors.insert(release_id, err);
+            }
+        }
+        for release_id in releases.keys() {
+            if let Some(err) = statement_errors
+                .remove(release_id)
+                .or_else(|| cache_errors.remove(release_id))
+            {
+                return Err(err);
+            }
+        }
+        let mut packages_to_hash = Vec::with_capacity(ids.len());
+        for id in &ids {
+            let locked = &state.lock.packages[id];
+            let release_id = format!("{}@{}", locked.name, locked.version);
+            let statement = &release_statements[&release_id];
+            if statement.id() != release_id
+                || (id != &release_id && !id.starts_with(&format!("{release_id}__peers_")))
                 || statement.artifact.hash != locked.artifact
                 || statement.artifact.tree_digest != locked.tree_digest
             {
                 bail!("signed identity of {id} no longer matches what is installed; reinstall");
             }
-            report.warnings.extend(self.policy.check(&statement, true)?);
+            let (os, cpu) = current_platform();
+            if !platform_matches(&statement.manifest.os, os)
+                || !platform_matches(&statement.manifest.cpu, cpu)
+            {
+                bail!("installed {id} excludes this target {os}-{cpu}");
+            }
+            report.warnings.extend(self.policy.check(statement, true)?);
             let dir = package_path(root, id, &locked.name);
             let expected = state
                 .script_modified
                 .get(id)
                 .cloned()
                 .unwrap_or_else(|| locked.tree_digest.clone());
-            let hash_started = Instant::now();
-            let actual = tree::tree_digest_of_dir(&dir)
-                .with_context(|| format!("hash installed files of {id}"))?;
-            timings.record_hash(hash_started.elapsed());
-            if actual != expected {
-                bail!(
-                    "installed files of {id} were modified after install ({}); run `rivet install` to restore them",
-                    dir.display()
-                );
-            }
-            report.statements.insert(id.clone(), statement);
+            packages_to_hash.push((id.clone(), dir, expected));
+            report.statements.insert(id.clone(), statement.clone());
         }
+        timings.hash = verify_package_trees(&packages_to_hash)?;
         for (command, target) in &state.bins {
             if !ids.contains(&target.package) {
                 continue;
@@ -352,7 +484,10 @@ impl Verifier<'_> {
             for (alias, dep) in &locked.dependencies {
                 let spec = statement
                     .manifest
-                    .dependency_spec(alias)
+                    .optional_dependencies
+                    .get(alias)
+                    .or_else(|| statement.manifest.dependencies.get(alias))
+                    .or_else(|| statement.manifest.peer_dependencies.get(alias))
                     .with_context(|| format!("installed edge {id} -> {alias} is not signed"))?;
                 let (name, range) = parse_spec(alias, spec)?;
                 let signed_dep = report.statements.get(dep).with_context(|| {
@@ -363,10 +498,37 @@ impl Verifier<'_> {
                 }
             }
             for alias in statement.manifest.dependencies.keys() {
-                if !locked.dependencies.contains_key(alias) {
+                if !statement.manifest.optional_dependencies.contains_key(alias)
+                    && !locked.dependencies.contains_key(alias)
+                {
                     bail!("installed graph omits signed required dependency {alias} of {id}");
                 }
             }
+        }
+        if state.lock.version >= 3 {
+            let mut graph = Graph {
+                roots: state.lock.roots.clone(),
+                ..Default::default()
+            };
+            for (id, package) in &state.lock.packages {
+                let statement = report.statements[id].clone();
+                graph.nodes.insert(
+                    id.clone(),
+                    Node {
+                        statement,
+                        envelope: super::attestation::Envelope {
+                            payload_type: String::new(),
+                            payload: String::new(),
+                            keyid: String::new(),
+                            signature: String::new(),
+                        },
+                        deps: package.dependencies.clone(),
+                        peer_bindings: package.peer_bindings.clone(),
+                        optional: package.optional,
+                    },
+                );
+            }
+            validate_contextual_lock_graph(&graph)?;
         }
         report.timings = timings.finish(started.elapsed());
         Ok(report)
@@ -398,14 +560,41 @@ mod tests {
     }
 
     #[test]
-    fn hash_timing_accumulates_submillisecond_packages_before_rounding() {
-        let mut timings = VerifyDurations::default();
-        for _ in 0..4 {
-            timings.record_hash(Duration::from_micros(300));
-        }
+    fn hash_timing_rounds_parallel_wall_time_once() {
+        let timings = VerifyDurations {
+            hash: Duration::from_micros(1200),
+            ..VerifyDurations::default()
+        };
         let report = timings.finish(Duration::from_micros(1500));
         assert_eq!(report.hash_ms, 1);
         assert_eq!(report.other_ms, 0);
+    }
+
+    #[test]
+    fn parallel_hashing_covers_later_jobs_and_reports_first_tamper() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut packages = Vec::new();
+        for index in 0..17 {
+            let id = format!("p{index:02}@1.0.0");
+            let path = dir.path().join(&id);
+            fs::create_dir(&path).unwrap();
+            fs::write(path.join("index.js"), b"module.exports = 1\n").unwrap();
+            let digest = tree::tree_digest_of_dir(&path).unwrap();
+            packages.push((id, path, digest));
+        }
+        assert!(verify_package_trees(&packages).is_ok());
+        fs::write(packages[16].1.join("index.js"), b"tampered").unwrap();
+        assert!(verify_package_trees(&packages)
+            .unwrap_err()
+            .to_string()
+            .contains("p16@1.0.0"));
+        fs::write(packages[0].1.join("index.js"), b"tampered").unwrap();
+        let error = verify_package_trees(&packages).unwrap_err().to_string();
+        assert!(error.contains("p00@1.0.0"), "{error}");
+
+        fs::remove_dir_all(&packages[0].1).unwrap();
+        let error = verify_package_trees(&packages).unwrap_err().to_string();
+        assert!(error.contains("p00@1.0.0"), "{error}");
     }
 
     fn attestations_body(fx: &Fixture, statements: &[&Statement]) -> String {
@@ -521,6 +710,138 @@ mod tests {
     }
 
     #[test]
+    fn fresh_revocation_blocks_later_offline_verification() {
+        let fx = Fixture::new(CommonFlags::default());
+        let graph = fixture_graph(&fx.store, 'a', None);
+        let active = graph.nodes["demo@1.0.0"].statement.clone();
+        let mut revoked = active.clone();
+        revoked.state = "revoked".into();
+        revoked.issued_at = "2026-09-26T00:00:00Z".into();
+        let (client, server) = serve_once(attestations_body(&fx, &[&revoked]));
+        fx.linker(&client, false)
+            .link(&fx.project, &graph, &fx.store.registry)
+            .unwrap();
+        fx.store
+            .cache_attestation(&active, &seal(&fx.signing, &fx.key.keyid, &active), &fx.key)
+            .unwrap();
+        let state = read_state(&fx.project).unwrap().unwrap();
+        let online_error = verifier(&fx, &client)
+            .verify(&fx.project, &state)
+            .unwrap_err()
+            .to_string();
+        assert!(online_error.contains("revoked"), "{online_error}");
+        server.join().unwrap();
+
+        let offline_client = fx.offline_client();
+        let offline_error = verifier(&fx, &offline_client)
+            .verify(&fx.project, &state)
+            .unwrap_err()
+            .to_string();
+        assert!(offline_error.contains("revoked"), "{offline_error}");
+    }
+
+    #[test]
+    fn fresh_revocation_is_cached_when_later_release_has_registry_error() {
+        let fx = Fixture::new(CommonFlags::default());
+        let mut graph = fixture_graph(&fx.store, 'a', None);
+        let mut sibling = sample_statement("sibling", "1.0.0");
+        sibling.artifact.hash = format!("sha512-{}", "b".repeat(128));
+        let sibling_dir = fx.store.package_dir(&sibling.artifact.hash).unwrap();
+        fs::create_dir_all(&sibling_dir).unwrap();
+        fs::write(sibling_dir.join("index.js"), "module.exports = 'safe';\n").unwrap();
+        sibling.artifact.tree_digest = tree::tree_digest_of_dir(&sibling_dir).unwrap();
+        graph.roots.insert(
+            "sibling".into(),
+            LockedRoot {
+                spec: "1.0.0".into(),
+                package: sibling.id(),
+            },
+        );
+        graph
+            .nodes
+            .insert(sibling.id(), unsigned_node(sibling.clone()));
+        let offline_client = fx.offline_client();
+        fx.linker(&offline_client, false)
+            .link(&fx.project, &graph, &fx.store.registry)
+            .unwrap();
+        let active = graph.nodes["demo@1.0.0"].statement.clone();
+        for statement in [&active, &sibling] {
+            fx.store
+                .cache_attestation(
+                    statement,
+                    &seal(&fx.signing, &fx.key.keyid, statement),
+                    &fx.key,
+                )
+                .unwrap();
+        }
+        let mut revoked = active.clone();
+        revoked.state = "revoked".into();
+        revoked.issued_at = "2026-09-26T00:00:00Z".into();
+        let mut body: serde_json::Value =
+            serde_json::from_str(&attestations_body(&fx, &[&revoked])).unwrap();
+        body["errors"] = serde_json::json!({"sibling@1.0.0": "temporarily unavailable"});
+        let (client, server) = serve_once(body.to_string());
+        let state = read_state(&fx.project).unwrap().unwrap();
+        let online_error = verifier(&fx, &client)
+            .verify(&fx.project, &state)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            online_error.contains("temporarily unavailable"),
+            "{online_error}"
+        );
+        server.join().unwrap();
+
+        let offline_error = verifier(&fx, &offline_client)
+            .verify(&fx.project, &state)
+            .unwrap_err()
+            .to_string();
+        assert!(offline_error.contains("revoked"), "{offline_error}");
+    }
+
+    #[test]
+    fn parallel_cache_keeps_newer_revocation_when_late_job_rolls_back() {
+        let fx = Fixture::new(CommonFlags::default());
+        let statements: Vec<Statement> = (0..12)
+            .map(|index| sample_statement(&format!("package-{index}"), "1.0.0"))
+            .collect();
+        let envelopes: Vec<_> = statements
+            .iter()
+            .map(|statement| seal(&fx.signing, &fx.key.keyid, statement))
+            .collect();
+        let mut revoked = statements[10].clone();
+        revoked.state = "revoked".into();
+        revoked.issued_at = "2026-09-26T00:00:00Z".into();
+        fx.store
+            .cache_attestation(
+                &revoked,
+                &seal(&fx.signing, &fx.key.keyid, &revoked),
+                &fx.key,
+            )
+            .unwrap();
+
+        let results = parallel_map(statements.len(), &|index| {
+            fx.store
+                .cache_attestation(&statements[index], &envelopes[index], &fx.key)
+        })
+        .unwrap();
+        let errors: Vec<_> = results
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, result)| result.err().map(|err| (index, err.to_string())))
+            .collect();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].0, 10);
+        assert!(errors[0].1.contains("rollback"), "{:?}", errors[0]);
+        let (cached, _) = fx
+            .store
+            .cached_attestation(&revoked.name, &revoked.version, &fx.key)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.state, "revoked");
+    }
+
+    #[test]
     fn accepts_unchanged_installed_package_and_links() {
         let fx = Fixture::new(CommonFlags::default());
         let graph = fixture_graph(&fx.store, 'a', None);
@@ -535,6 +856,58 @@ mod tests {
         let report = verifier(&fx, &client).verify(&fx.project, &state).unwrap();
         assert!(report.statements.contains_key("demo@1.0.0"));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn rejects_receipt_from_another_registry() {
+        let fx = Fixture::new(CommonFlags::default());
+        let client = fx.offline_client();
+        let graph = fixture_graph(&fx.store, 'a', None);
+        fx.linker(&client, false)
+            .link(&fx.project, &graph, &fx.store.registry)
+            .unwrap();
+        let state = read_state(&fx.project).unwrap().unwrap();
+        let mut other_store = fx.store.clone();
+        other_store.registry = "https://other.example.test".into();
+        other_store
+            .write_install_receipt(&fx.project, &fx.key, &state)
+            .unwrap();
+        let error = Verifier {
+            store: &other_store,
+            client: &client,
+            key: &fx.key,
+            policy: &fx.policy,
+        }
+        .verify(&fx.project, &state)
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("another registry"), "{error}");
+    }
+
+    #[test]
+    fn verifies_existing_v2_installed_receipt_offline() {
+        let fx = Fixture::new(CommonFlags::default());
+        let client = fx.offline_client();
+        let graph = fixture_graph(&fx.store, 'a', None);
+        fx.linker(&client, false)
+            .link(&fx.project, &graph, &fx.store.registry)
+            .unwrap();
+        let statement = &graph.nodes["demo@1.0.0"].statement;
+        fx.store
+            .cache_attestation(
+                statement,
+                &seal(&fx.signing, &fx.key.keyid, statement),
+                &fx.key,
+            )
+            .unwrap();
+        let mut state = read_state(&fx.project).unwrap().unwrap();
+        state.lock.version = 2;
+        fs::write(state_path(&fx.project), serde_json::to_vec(&state).unwrap()).unwrap();
+        fx.store
+            .write_install_receipt(&fx.project, &fx.key, &state)
+            .unwrap();
+        let report = verifier(&fx, &client).verify(&fx.project, &state).unwrap();
+        assert!(report.statements.contains_key("demo@1.0.0"));
     }
 
     #[test]

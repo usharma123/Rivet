@@ -138,9 +138,21 @@ run_scenario() {
   out=$("$RIVET" install 2>&1)
   expect "$out" "Packages: [0-9]{2,}" "dependency tree resolved"
   expect "$out" "Verified provenance: [1-9]" "some packages carry verified provenance"
-  expect "$out" "optional packages built for other platforms" "platform-specific optional deps filtered"
   expect "$out" "Install script not run: esbuild" "install scripts are off by default"
   [[ -f rivet.lock ]] || fail "rivet.lock written"
+  python3 - <<'PY' || fail "native optional packages differ from the selected target"
+import json, platform
+target = ('darwin' if platform.system() == 'Darwin' else 'linux') + '-' + ('arm64' if platform.machine() in ('arm64', 'aarch64') else 'x64')
+lock = json.load(open('rivet.lock'))
+state = json.load(open('node_modules/.rivet/state.json'))
+for variant_target, variant in lock['variants'].items():
+    native = {package['name'] for package in variant['packages'].values()
+              if package['name'].startswith('@esbuild/')}
+    assert native == {'@esbuild/' + variant_target}, (variant_target, native)
+selected = {package['name'] for package in state['lock']['packages'].values()
+            if package['name'].startswith('@esbuild/')}
+assert selected == {'@esbuild/' + target}, (target, selected)
+PY
 
   step "installed packages work with plain Node resolution"
   out=$(node -e "const React=require('react');const {renderToString}=require('react-dom/server');console.log(renderToString(React.createElement('b',null,'ok')))")
@@ -171,7 +183,12 @@ run_scenario() {
   step "verify checks installed files, explicit versions and malformed state"
   out=$("$RIVET" verify semver 2>&1)
   expect "$out" "Installed files and links: [0-9]+ packages verified" "verify re-hashes a project command"
-  semver_id=$(python3 -c 'import json; print(json.load(open("rivet.lock"))["roots"]["semver"]["package"])')
+  semver_id=$(python3 - <<'PY'
+import json, platform
+target = ('darwin' if platform.system() == 'Darwin' else 'linux') + '-' + ('arm64' if platform.machine() in ('arm64', 'aarch64') else 'x64')
+print(json.load(open('rivet.lock'))['variants'][target]['roots']['semver']['package'])
+PY
+)
   out=$("$RIVET" verify "$semver_id" 2>&1) || { echo "$out"; fail "verify $semver_id inside an installed project"; }
   expect "$out" "Package: $semver_id" "explicit package@version verifies inside a project"
   cp node_modules/.rivet/state.json "$WORK/state.json.bak"
@@ -191,6 +208,12 @@ run_scenario() {
   out=$(bench "$semver_entry" semver 1.2.3 -r '^1.0.0')
   printf '%s\n' "$out"
   expect "$out" '"warm_median_s"' "benchmark recorded"
+  if [[ -n "${RIVET_E2E_BENCH_BEFORE:-}" ]]; then
+    python3 "$ROOT/tools/bench/verify.py" "$RIVET_E2E_BENCH_BEFORE" "$RIVET" semver 1.2.3 -r '^1.0.0'
+  fi
+  if [[ -n "${RIVET_E2E_BENCH_TWO:-}" && -n "${RIVET_E2E_BENCH_EIGHT:-}" ]]; then
+    python3 "$ROOT/tools/bench/workers.py" "$RIVET_E2E_BENCH_TWO" "${RIVET_E2E_BENCH_FOUR:-$RIVET}" "$RIVET_E2E_BENCH_EIGHT" semver 1.2.3 -r '^1.0.0'
+  fi
 
   step "tampering with an installed file is detected before running"
   target=$(find node_modules/.rivet -path '*node_modules/semver/bin/semver.js' | head -1)

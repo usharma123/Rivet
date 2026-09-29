@@ -1,6 +1,6 @@
 # Security review record
 
-This is the maintained record of the 2026-09-25 security review of the Rivet trust chain (signed attestations, resolver, installer, run-time sandbox and registry audits). It replaces the four review notes that were kept in `docs/reviews/`: the original Astra review, the supplemental review, the Sol implementation notes and the Astra recheck. Their findings, evidence and open limits are preserved below. Update this file whenever a finding changes state or a limit is closed.
+This records the 2026-09-25 review of the Rivet trust chain and the 2026-09-29 follow-up work on verification, portable locks, peers, and trusted audit observations. It replaces the four review notes that were kept in `docs/reviews/`: the original Astra review, the supplemental review, the Sol implementation notes and the Astra recheck. Their findings, evidence and open limits are preserved below. Update this file whenever a finding changes state or a limit is closed.
 
 Passing tests show that the listed fixes work for the cases tested. They do not prove there are no remaining defects.
 
@@ -27,8 +27,8 @@ Severity: P1 breaks a claimed trust boundary; P2 is a correctness or robustness 
 | R3 | P1 | An older, unexpired "active" statement could be replayed after a revocation was cached, including via a concurrent-write race and same-second timestamps. | Fixed: acceptance compares against the cache under a cross-process lock, rejects rollback and equal-time conflicts, and replaces atomically. | `rejects_replayed_active_attestation_after_revocation`, `concurrent_attestation_writes_keep_revocation`, `equal_time_revocation_conflict_is_rejected` |
 | R4 | P1 | Runtime trusted unsigned `state.json`: dependency symlinks, bin entries and "script modified" digests could be changed without touching hashed package files. | Fixed: a protected install receipt outside the project; links, bins and edges checked against signed manifests; every installed package re-hashed, including sibling roots. | `rejects_state_and_link_tampering_before_execution`, `rehashes_sibling_root_outside_the_commands_closure`, e2e tamper step |
 | R5 | P1 | Lifecycle scripts and executables declared only in a native `rivet.toml` were signed but never audited. | Fixed: audits use the signed normalized manifest. | `TestNativeManifestWithoutPackageJSONIsAuditedAndProbed` |
-| R6 | P1 | The dynamic audit's observations are written by the same user the package runs as, so a package can erase or forge them. | Mitigated, not solved: observations are recorded but never trusted; every audit is certified as static, and `require_sandbox_audit` cannot pass. See open limits. | `TestPackageWritableDynamicEvidenceCannotCertifyGVisorPass` |
-| R7 | P1 | The dynamic agent extracted the raw tarball, which can differ from the canonical tree that is signed and installed. | Fixed in source: the agent runs on the registry's canonical tree and normalized manifest, and incomplete runs fail. Not run under real gVisor. | Go audit tests; no gVisor run |
+| R6 | P1 | The dynamic audit's observations are written by the same user the package runs as, so a package can erase or forge them. | Fixed: a separate observer receives gVisor events through a private volume. Certification requires a bound, complete stream, no remaining package processes, zero dropped events, and successful workload and observer exits. Package hook logs remain advisory. | `TestPackageWritableDynamicEvidenceCannotCertifyGVisorPass`, `TestDockerRunnerLive`, observer parser tests; live non-root Go pipeline under gVisor |
+| R7 | P1 | The dynamic agent extracted the raw tarball, which can differ from the canonical tree that is signed and installed. | Fixed and exercised under gVisor: the registry prepares the canonical tree and normalized manifest and binds their hashes to the trace result. Incomplete required probes fail. | Go input-binding tests and `TestDockerRunnerLive` |
 | R8 | P2 | Redirects bypassed the npm host allowlist. | Fixed: redirects are pinned to the configured scheme and host. | `TestRestrictedFetchesDoNotFollowCrossHostRedirects` |
 | R9 | P2 | A failed install deleted the previous working install. | Fixed: builds in a staging tree and swaps only on success. | `failed_artifact_fetch_preserves_previous_installation`, `failed_required_script_preserves_previous_installation` |
 | R10 | P2 | Failed required install scripts were reported as successful installs. | Fixed: required failures and timeouts abort; optional failures remove the package and its links. | `timed_out_required_script_preserves_previous_installation`, `failed_optional_script_is_removed_from_installed_state` |
@@ -56,12 +56,12 @@ Severity: P1 breaks a claimed trust boundary; P2 is a correctness or robustness 
 
 | Platform | Sandbox tests | End-to-end (temp and `$HOME`) | Notes |
 | --- | --- | --- | --- |
-| macOS 15 (arm64), Seatbelt | Pass | Pass | Developer machine. |
-| Linux aarch64, bubblewrap, non-root | Pass | Pass | Fresh `tools/e2e/linux.sh` run on 2026-09-25: LinuxKit 6.12.54, bubblewrap 0.8.0, UID 1000. The outer Docker container is privileged so the unprivileged user can create user namespaces; the repository mount is read-only. |
+| macOS 15 (arm64), Seatbelt | Pass | Pass | Fresh 2026-09-29 run on the integrated CLI, 83 Rust tests. |
+| Linux aarch64, bubblewrap, non-root | Pass | Pass | Fresh `tools/e2e/linux.sh` run on 2026-09-29, 83 Rust tests and both placements. The outer Docker container is privileged so UID 1000 can create user namespaces; the repository mount is read-only. |
 | Linux x86_64, bubblewrap, non-root | Pass | Pass | GitHub Actions `ubuntu-latest`, bubblewrap 0.9.0, CI run [36175660533](https://github.com/usharma123/Rivet/actions/runs/36175660533) on PR #1 (commit `098fc31`). All six live sandbox tests ran under bubblewrap, including the seccomp filter refusing Unix sockets on an x86_64 kernel. The same run passed the Postgres store contract and legacy-release startup test. |
-| gVisor dynamic audit | Not run | Not run | See R6 and R7. |
+| gVisor dynamic audit, Linux aarch64 | Live pipeline passed | Dedicated audit fixtures | Separate collector, native egress and honeyfile observations, zero drops, supervisor-only completion, and both exits checked. See R6, R7, and the [live receipt](../tools/e2e/audit-trace-results-2026-09-29.md). |
 
-On the current macOS worktree, the full end-to-end run passed in both placements. All 56 Rust tests, Clippy, formatting, workspace and docs checks, and Node checks passed. The corrected PostgreSQL target ran both the store contract and legacy-release startup tests against a real database, then shut down the disposable database. The fresh Linux run passed all 56 Rust tests, including live bubblewrap tests, and both end-to-end placements. A separate `go test ./...` run passed there; it did not enable the real-database tests. The Linux run used source snapshot SHA-256 `b4d662a1adaa8ed3a2b1209f710773f348cc93fae704b669d66fd489e0a86eba`.
+On the 2026-09-25 macOS worktree, the full end-to-end run passed in both placements. All 56 Rust tests, Clippy, formatting, workspace and docs checks, and Node checks passed. The corrected PostgreSQL target ran both the store contract and legacy-release startup tests against a real database, then shut down the disposable database. That Linux run passed all 56 Rust tests, including live bubblewrap tests, and both end-to-end placements. A separate `go test ./...` run passed there; it did not enable the real-database tests. The Linux run used source snapshot SHA-256 `b4d662a1adaa8ed3a2b1209f710773f348cc93fae704b669d66fd489e0a86eba`.
 
 ## Run-time cost
 
@@ -78,7 +78,7 @@ Historical samples measured on 2026-09-25 with `semver 1.2.3 -r ^1.0.0` in the e
 
 The historical hashing figures summed each package's elapsed whole milliseconds, discarding submillisecond time from every package. They remain invalid; corrected macOS and Linux samples are below. The corrected verifier sums durations before rounding and reports total, layout, fetch, hashing, and other verification time. Other verification includes signature checks, cache writes, policy and dependency-graph checks, plus millisecond rounding. Time outside verification also includes CLI startup, sandbox setup, and interpreter and package execution. The registry here was local, so real-network statement fetches will add latency. `rivet run --verbose` prints the breakdown, and `--json` includes it as `verify_timings_ms`.
 
-Current corrected samples (2026-09-25, `semver 1.2.3 -r ^1.0.0`; Linux aarch64 used `tools/e2e/linux.sh`, Linux x86_64 is the shared CI runner and therefore noisier):
+Corrected historical samples (2026-09-25, `semver 1.2.3 -r ^1.0.0`; Linux aarch64 used `tools/e2e/linux.sh`, Linux x86_64 is the shared CI runner and therefore noisier):
 
 | Platform | Placement | Packages | First run | Warm median | Plain node median | Max child RSS | Verify total | Layout | Fetch | Hash | Other |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -91,19 +91,40 @@ Current corrected samples (2026-09-25, `semver 1.2.3 -r ^1.0.0`; Linux aarch64 u
 
 The verification phases come from a separate `rivet run --json --dry-run` sample. They do not partition the first-run or median wall time.
 
-A way to cut hashing cost without narrowing coverage would be to cache per-file digests in the protected receipt, keyed by inode, size and change time (which package code cannot set back). That is untried and would need its own tamper tests.
+The integrated 2026-09-29 CLI passed all end-to-end scenarios in both placements
+on macOS and Linux arm64. Five warm actual-command samples per placement gave:
+
+| Platform | Placement | Packages | Rivet median | Plain Node median |
+| --- | --- | --- | --- | --- |
+| macOS arm64 | temp | 137 | 201 ms | 65 ms |
+| macOS arm64 | `$HOME` | 137 | 176 ms | 64 ms |
+| Linux arm64 | temp | 138 | 84 ms | 20 ms |
+| Linux arm64 | `$HOME` | 138 | 80 ms | 19 ms |
+
+These runs used separate fresh installations and warm local registries. They
+are runtime checks, not controlled comparisons against the historical table
+or between operating systems. Source and binary hashes, phase measurements,
+and logs are in `tools/bench/results/2026-09-29-integrated-e2e.json` and the
+adjacent logs.
+
+The 2026-09-29 implementation streams each file through a 64 KiB buffer and hashes packages with at most eight workers. It still reads every installed file before execution. No persistent file-digest cache was introduced.
+
+An alternating comparison on the same warm 137-package macOS arm64 installation measured median verification command wall time of 402.1 ms for the serial baseline and 206.3 ms with eight workers. Median hashing time fell from 224.5 ms to 50.5 ms. A separate 192 MiB file test produced identical digests and reduced the hashing helper's median peak RSS from 193.4 MiB to 1.4 MiB. These are local measurements, not cross-platform performance guarantees. The isolated hashing candidate passed the full macOS end-to-end scenarios in both placements. Integrated resolver and audit validation is tracked in [the work report](verification-compatibility-work.md).
+
+Raw samples and the measured source patch are in `tools/bench/results/`. The updated `hash_ms` measures elapsed time for the parallel phase. It is not the sum of individual workers' durations.
 
 Full-tree hashing is justified by the current module exposure: Node can resolve any top-level root, so verifying only a command's closure would leave reachable code unchecked. Do not narrow it without also constraining Node's resolution, and re-measure before and after any change.
 
 ## Open limits
 
-- **Dynamic audit trust (R6).** No trusted observation channel exists. A separate observer user alone would not establish that package code cannot suppress or fabricate observations; observations need to come from outside the package's control (for example gVisor's host-side logs), and that boundary needs adversarial tests before any audit is certified as sandboxed. Keep `RIVET_AUDIT_MODE=gvisor` off for normal use until then.
-- **gVisor** has not been observed running (see the platform table). Linux is validated on aarch64 (Docker) and x86_64 (CI); other Linux architectures fail closed.
+- **Audit coverage.** The trusted collector observes configured kernel events during selected probes. It does not prove that every package behavior was exercised. This runtime lacks a resolved-target mmap trace, so unsupported alias, namespace, and I/O mechanisms conservatively prevent certification. This can refuse legitimate packages. Details and deployment requirements are in [ADR 0005](adr/0005-audit-trust-policy.md).
+- **gVisor deployment.** Certification requires runsc `release-20260601.0`, permission for its trace configuration, and a restricted host helper using the Docker runtime's binary and state root. Missing access fails closed. UID 2000 is reserved for package probes and cannot run the registry. The September 29 local audit receipt covers Linux arm64. The new [CI matrix](ci.md) also runs the live collector on Linux x64 and arm64; consult the matching run artifacts for current commit evidence.
+- **Background audit children.** The Node supervisor cannot reap adopted zombies. Certification refuses any process list beyond supervisor PID 1, including killed but unreaped children. The live detached-child fixture verifies this refusal.
 - **Legacy Postgres releases (R17)** need an external migration or a development reset; there is no automatic backfill.
 - **Ancestor `node_modules`.** Rivet refuses to run when any ancestor directory contains `node_modules`, because Node would resolve unverified modules there. This is safe but blocks some monorepo layouts; broader support needs a defined resolution boundary.
 - **Revocation scope.** Because every installed package is verified, one revoked package blocks every command in that project until it is removed or replaced.
 - **Linux relocation.** Bubblewrap cannot deny renaming a protected directory's parent when a write grant covers it. Protected bytes still cannot change, and a substituted tree fails verification, but the rename itself succeeds.
-- **Peer contexts.** Peers resolve as ordinary dependencies with preferred versions; distinct peer contexts and peer conflicts are not modelled.
-- **Cross-platform frozen locks.** Lockfiles keep only the platform-specific optional packages selected on the machine that resolved them. Moving a lock between macOS and Linux has not been tested.
+- **Peer graph limits.** Context expansion allows at most 4,096 instances and 64 recursive levels. Larger graphs return an error. Optional script failure removes all contexts of that release, and fails the install if any context is required.
+- **Portable lock coverage.** Version 3 pins macOS/Linux arm64/x64 variants. The live same-lock test covers macOS arm64 and Linux arm64 with native esbuild in both directions, identical lock bytes, and no frozen re-resolution. The new [CI matrix](ci.md) transfers one exact lock to all four native targets and records native execution, byte preservation and frozen resolve counts per commit. Frozen version 2 installs require a normal install to migrate the project lock; existing version 2 installed receipts still verify.
 - **Registry resource limits.** The packument cache never evicts, and public mirroring has no global concurrency or memory budget.
-- **Hashing memory.** `tree_digest_of_dir` holds each package's file contents in memory while hashing; streaming would bound memory for very large packages.
+- **Filesystem races.** Streaming hashing bounds file-content memory, but verification is not an atomic filesystem snapshot. External mutation during or after verification remains outside that guarantee.

@@ -1,0 +1,108 @@
+{
+  "date": "2026-09-29",
+  "base_commit": "f2c3c0d1c0075b92b08eb45beae806a3ac7a5f96",
+  "scope": "final shared-tree npm-port integration; v3 portable lock, peer contexts, streaming/parallel hashing, per-release parallel cache",
+  "validation": {
+    "mac": "tools/e2e/npm-port.sh with RIVET_E2E_PLACEMENTS=tmp home; all checks passed",
+    "linux": "tools/e2e/linux.sh; bubblewrap user namespaces available, 83 Rust tests and npm-port tmp home all passed"
+  },
+  "workload": "fresh local registry mirroring npm for each placement; 137 macOS or 138 Linux installed packages; semver 1.2.3 -r ^1.0.0; actual rivet run versus plain Node after frozen reinstall; five warm samples each, first measured run not cold",
+  "source_sha256": {
+    "cli/src/core/installed.rs": "34f5b30b2cbdfbdeb2e08d00e305b5ddada0519baedd18d451a78cb53e66a213",
+    "cli/src/core/tree.rs": "20276dae263255974aa2caa946eaf7a4a0e531760be255e6a0e7e474deb4a612",
+    "cli/src/commands/verify.rs": "132ef6e775c4e56df3966c635510b1eaf6a4bef1105e626de0b160994866d8fd",
+    "tools/e2e/npm-port.sh": "ae7ceebee4e6c7f9d4771a318be9c4b2b72ebbe7bd559367bf2eb99db8236258"
+  },
+  "binary_sha256": {
+    "macos_arm64": "77d3a2eadafa6e0b893aad01338dd267cd1d322d7f44d5388a08fdb2321adc9b",
+    "linux_arm64": "d262610a79bd092769ebf4bc7e728e80f0cf19ed5e32bcd3af15a1ee52735bb5"
+  },
+  "machine": {
+    "macos": {
+      "system": "Darwin",
+      "machine": "arm64",
+      "release": "24.6.0",
+      "cpu": "Apple M4 Pro"
+    },
+    "linux": "Docker rivet-linux-check image on same Apple M4 Pro host; container uname -m=aarch64, Node process.arch=arm64; `file` reports ELF 64-bit ARM aarch64; CPU resource allocation differs from native macOS"
+  },
+  "raw_actual_run": {
+    "macos": [
+      {
+        "placement": "tmp",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.183,
+        "warm_median_s": 0.201,
+        "plain_node_median_s": 0.065,
+        "max_child_rss_mib": 52.1,
+        "verify_phases_ms": {
+          "fetch_ms": 6,
+          "hash_ms": 60,
+          "layout_ms": 25,
+          "other_ms": 50,
+          "total_ms": 141
+        }
+      },
+      {
+        "placement": "home",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.187,
+        "warm_median_s": 0.176,
+        "plain_node_median_s": 0.064,
+        "max_child_rss_mib": 52.3,
+        "verify_phases_ms": {
+          "fetch_ms": 7,
+          "hash_ms": 37,
+          "layout_ms": 16,
+          "other_ms": 48,
+          "total_ms": 108
+        }
+      }
+    ],
+    "linux": [
+      {
+        "placement": "tmp",
+        "platform": "linux",
+        "packages": 138,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.087,
+        "warm_median_s": 0.084,
+        "plain_node_median_s": 0.02,
+        "max_child_rss_mib": 11.9,
+        "verify_phases_ms": {
+          "fetch_ms": 6,
+          "hash_ms": 35,
+          "layout_ms": 2,
+          "other_ms": 14,
+          "total_ms": 57
+        }
+      },
+      {
+        "placement": "home",
+        "platform": "linux",
+        "packages": 138,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.081,
+        "warm_median_s": 0.08,
+        "plain_node_median_s": 0.019,
+        "max_child_rss_mib": 11.9,
+        "verify_phases_ms": {
+          "fetch_ms": 5,
+          "hash_ms": 33,
+          "layout_ms": 2,
+          "other_ms": 13,
+          "total_ms": 53
+        }
+      }
+    ]
+  },
+  "limits": "Placement runs use separate newly installed trees and are not a controlled speed comparison. ru_maxrss is a child-process high-water mark, not concurrent process-tree peak. Warm local registry results do not establish cold-cache or remote-registry speed.",
+  "binary_provenance": {
+    "macos_arm64": "target/release/rivet built by final macOS npm-port E2E script and hashed after run",
+    "linux_arm64": "/home/rivet/target/release/rivet from rivet-linux-target volume used by tools/e2e/linux.sh; verified afterward in rivet-linux-check image with sha256sum and file (ELF ARM aarch64)"
+  }
+}

@@ -1,0 +1,345 @@
+diff --git a/cli/src/core/installed.rs b/cli/src/core/installed.rs
+index 85af156..4a94756 100644
+--- a/cli/src/core/installed.rs
++++ b/cli/src/core/installed.rs
+@@ -3,7 +3,8 @@
+ use std::{
+     collections::{BTreeMap, BTreeSet},
+     fs,
+-    path::Path,
++    path::{Path, PathBuf},
++    sync::atomic::{AtomicUsize, Ordering},
+     time::{Duration, Instant},
+ };
+ 
+@@ -199,10 +200,6 @@ struct VerifyDurations {
+ }
+ 
+ impl VerifyDurations {
+-    fn record_hash(&mut self, elapsed: Duration) {
+-        self.hash += elapsed;
+-    }
+-
+     fn finish(self, total: Duration) -> VerifyTimings {
+         let total_ms = total.as_millis();
+         let layout_ms = self.layout.as_millis();
+@@ -218,6 +215,82 @@ impl VerifyDurations {
+     }
+ }
+ 
++/// Hash every installed package with bounded concurrency and memory. Results
++/// retain input order so the first reported tamper remains deterministic.
++fn verify_package_trees(packages: &[(String, PathBuf, String)]) -> Result<Duration> {
++    const HASH_WORKERS: usize = 8;
++    let started = Instant::now();
++    let workers = std::thread::available_parallelism()
++        .map_or(1, std::num::NonZeroUsize::get)
++        .min(HASH_WORKERS)
++        .min(packages.len());
++    let mut results: Vec<Option<Result<String>>> = std::iter::repeat_with(|| None)
++        .take(packages.len())
++        .collect();
++    if workers == 0 {
++        return Ok(started.elapsed());
++    }
++    let next = AtomicUsize::new(0);
++    std::thread::scope(|scope| -> Result<()> {
++        let mut handles = Vec::with_capacity(workers);
++        let mut spawn_error = None;
++        for _ in 0..workers {
++            match std::thread::Builder::new().spawn_scoped(scope, || {
++                let mut output = Vec::new();
++                loop {
++                    let index = next.fetch_add(1, Ordering::Relaxed);
++                    if index >= packages.len() {
++                        break;
++                    }
++                    output.push({
++                        let (id, dir, _) = &packages[index];
++                        (
++                            index,
++                            tree::tree_digest_of_dir(dir)
++                                .with_context(|| format!("hash installed files of {id}")),
++                        )
++                    });
++                }
++                output
++            }) {
++                Ok(handle) => handles.push(handle),
++                Err(err) => {
++                    spawn_error = Some(err);
++                    break;
++                }
++            }
++        }
++        let mut panicked = false;
++        for handle in handles {
++            match handle.join() {
++                Ok(output) => {
++                    for (index, result) in output {
++                        results[index] = Some(result);
++                    }
++                }
++                Err(_) => panicked = true,
++            }
++        }
++        if let Some(err) = spawn_error {
++            return Err(err).context("spawn installed file hashing worker");
++        }
++        if panicked {
++            bail!("installed file hashing worker panicked");
++        }
++        Ok(())
++    })?;
++    for ((id, dir, expected), result) in packages.iter().zip(results) {
++        let actual = result.context("missing installed file hash")??;
++        if actual != *expected {
++            bail!(
++                "installed files of {id} were modified after install ({}); run `rivet install` to restore them",
++                dir.display()
++            );
++        }
++    }
++    Ok(started.elapsed())
++}
++
+ impl Verifier<'_> {
+     pub fn verify(&self, root: &Path, state: &InstalledState) -> Result<VerifyReport> {
+         let started = Instant::now();
+@@ -257,6 +330,7 @@ impl Verifier<'_> {
+             }
+         };
+         timings.fetch = fetch_started.elapsed();
++        let mut packages_to_hash = Vec::with_capacity(ids.len());
+         for id in &ids {
+             let locked = state
+                 .lock
+@@ -296,18 +370,10 @@ impl Verifier<'_> {
+                 .get(id)
+                 .cloned()
+                 .unwrap_or_else(|| locked.tree_digest.clone());
+-            let hash_started = Instant::now();
+-            let actual = tree::tree_digest_of_dir(&dir)
+-                .with_context(|| format!("hash installed files of {id}"))?;
+-            timings.record_hash(hash_started.elapsed());
+-            if actual != expected {
+-                bail!(
+-                    "installed files of {id} were modified after install ({}); run `rivet install` to restore them",
+-                    dir.display()
+-                );
+-            }
++            packages_to_hash.push((id.clone(), dir, expected));
+             report.statements.insert(id.clone(), statement);
+         }
++        timings.hash = verify_package_trees(&packages_to_hash)?;
+         for (command, target) in &state.bins {
+             if !ids.contains(&target.package) {
+                 continue;
+@@ -398,16 +464,44 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn hash_timing_accumulates_submillisecond_packages_before_rounding() {
+-        let mut timings = VerifyDurations::default();
+-        for _ in 0..4 {
+-            timings.record_hash(Duration::from_micros(300));
+-        }
++    fn hash_timing_rounds_parallel_wall_time_once() {
++        let timings = VerifyDurations {
++            hash: Duration::from_micros(1200),
++            ..VerifyDurations::default()
++        };
+         let report = timings.finish(Duration::from_micros(1500));
+         assert_eq!(report.hash_ms, 1);
+         assert_eq!(report.other_ms, 0);
+     }
+ 
++    #[test]
++    fn parallel_hashing_covers_later_jobs_and_reports_first_tamper() {
++        let dir = tempfile::tempdir().unwrap();
++        let mut packages = Vec::new();
++        for id in [
++            "a@1.0.0", "b@1.0.0", "c@1.0.0", "d@1.0.0", "e@1.0.0", "f@1.0.0",
++        ] {
++            let path = dir.path().join(id);
++            fs::create_dir(&path).unwrap();
++            fs::write(path.join("index.js"), b"module.exports = 1\n").unwrap();
++            let digest = tree::tree_digest_of_dir(&path).unwrap();
++            packages.push((id.to_string(), path, digest));
++        }
++        assert!(verify_package_trees(&packages).is_ok());
++        fs::write(packages[5].1.join("index.js"), b"tampered").unwrap();
++        assert!(verify_package_trees(&packages)
++            .unwrap_err()
++            .to_string()
++            .contains("f@1.0.0"));
++        fs::write(packages[0].1.join("index.js"), b"tampered").unwrap();
++        let error = verify_package_trees(&packages).unwrap_err().to_string();
++        assert!(error.contains("a@1.0.0"), "{error}");
++
++        fs::remove_dir_all(&packages[0].1).unwrap();
++        let error = verify_package_trees(&packages).unwrap_err().to_string();
++        assert!(error.contains("a@1.0.0"), "{error}");
++    }
++
+     fn attestations_body(fx: &Fixture, statements: &[&Statement]) -> String {
+         let attestations: serde_json::Map<String, serde_json::Value> = statements
+             .iter()
+diff --git a/cli/src/core/tree.rs b/cli/src/core/tree.rs
+index 624d039..599d71f 100644
+--- a/cli/src/core/tree.rs
++++ b/cli/src/core/tree.rs
+@@ -6,7 +6,7 @@ use std::{
+     collections::BTreeMap,
+     fs,
+     io::{Cursor, Read},
+-    os::unix::fs::PermissionsExt,
++    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+     path::Path,
+ };
+ 
+@@ -113,7 +113,10 @@ pub fn tree_digest<'a>(files: impl Iterator<Item = (&'a str, bool, &'a [u8])>) -
+ /// Recomputes the tree digest of an extracted package directory. Symlinks or
+ /// special files inside a package directory are treated as tampering.
+ pub fn tree_digest_of_dir(root: &Path) -> Result<String> {
+-    let mut files: Vec<(String, bool, Vec<u8>)> = Vec::new();
++    // Keep only per-file digests in memory. A package can contain files close
++    // to the archive limit, and verification runs before every command.
++    let mut files: Vec<(String, bool, [u8; 32])> = Vec::new();
++    let mut buffer = [0u8; 64 * 1024];
+     for entry in WalkDir::new(root).follow_links(false) {
+         let entry = entry?;
+         let file_type = entry.file_type();
+@@ -132,12 +135,49 @@ pub fn tree_digest_of_dir(root: &Path) -> Result<String> {
+                 root.display()
+             );
+         }
+-        let metadata = entry.metadata()?;
+-        let data = fs::read(entry.path())?;
+-        files.push((relative, metadata.permissions().mode() & 0o111 != 0, data));
++        let mut file = fs::OpenOptions::new()
++            .read(true)
++            // O_NONBLOCK prevents a swapped-in FIFO from hanging verification.
++            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
++            .open(entry.path())?;
++        let metadata = file.metadata()?;
++        if !metadata.is_file() {
++            bail!(
++                "unexpected non-regular file {relative} in {}",
++                root.display()
++            );
++        }
++        let mut hasher = Sha256::new();
++        loop {
++            let count = match file.read(&mut buffer) {
++                Ok(count) => count,
++                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
++                Err(err) => return Err(err.into()),
++            };
++            if count == 0 {
++                break;
++            }
++            hasher.update(&buffer[..count]);
++        }
++        files.push((
++            relative,
++            metadata.permissions().mode() & 0o111 != 0,
++            hasher.finalize().into(),
++        ));
+     }
+-    Ok(tree_digest(
+-        files.iter().map(|(p, x, d)| (p.as_str(), *x, d.as_slice())),
++    files.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
++    let mut hasher = Sha256::new();
++    for (path, executable, digest) in files {
++        hasher.update(path.as_bytes());
++        hasher.update([0]);
++        hasher.update(if executable { b"x" } else { b"-" });
++        hasher.update([0]);
++        hasher.update(hex::encode(digest).as_bytes());
++        hasher.update(b"\n");
++    }
++    Ok(format!(
++        "{TREE_DIGEST_PREFIX}{}",
++        hex::encode(hasher.finalize())
+     ))
+ }
+ 
+@@ -163,6 +203,7 @@ pub fn write_package(package: &CanonPackage, dest: &Path) -> Result<()> {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use std::os::unix::fs::symlink;
+ 
+     const VECTOR: &[u8] = include_bytes!("../../../fixtures/tarballs/tree-vector.tgz");
+     const VECTOR_DIGEST: &str = include_str!("../../../fixtures/tarballs/tree-vector.digest");
+@@ -203,6 +244,69 @@ mod tests {
+             tree_digest_of_dir(dir.path()).unwrap(),
+             VECTOR_DIGEST.trim()
+         );
++        fs::remove_file(extra).unwrap();
++        fs::remove_file(dir.path().join("lib/a.js")).unwrap();
++        assert_ne!(
++            tree_digest_of_dir(dir.path()).unwrap(),
++            VECTOR_DIGEST.trim()
++        );
++    }
++
++    #[test]
++    fn empty_directory_has_empty_canonical_digest() {
++        let dir = tempfile::tempdir().unwrap();
++        assert_eq!(
++            tree_digest_of_dir(dir.path()).unwrap(),
++            tree_digest(std::iter::empty())
++        );
++    }
++
++    #[test]
++    fn streams_large_file_with_canonical_digest_and_detects_tail_tampering() {
++        let dir = tempfile::tempdir().unwrap();
++        let path = dir.path().join("large.bin");
++        let data = vec![0x5a; 32 * 1024 * 1024];
++        fs::write(&path, &data).unwrap();
++        let expected = tree_digest(std::iter::once(("large.bin", false, data.as_slice())));
++        assert_eq!(tree_digest_of_dir(dir.path()).unwrap(), expected);
++
++        let mut changed = data;
++        *changed.last_mut().unwrap() = 0x5b;
++        fs::write(&path, changed).unwrap();
++        assert_ne!(tree_digest_of_dir(dir.path()).unwrap(), expected);
++    }
++
++    #[test]
++    fn streams_empty_and_multiple_files_with_executable_modes() {
++        let dir = tempfile::tempdir().unwrap();
++        fs::write(dir.path().join("empty"), []).unwrap();
++        fs::write(dir.path().join("script"), b"#!/bin/sh\n").unwrap();
++        fs::set_permissions(dir.path().join("script"), fs::Permissions::from_mode(0o755)).unwrap();
++        let expected = tree_digest(
++            [
++                ("script", true, b"#!/bin/sh\n".as_slice()),
++                ("empty", false, b"".as_slice()),
++            ]
++            .into_iter(),
++        );
++        assert_eq!(tree_digest_of_dir(dir.path()).unwrap(), expected);
++
++        fs::set_permissions(dir.path().join("script"), fs::Permissions::from_mode(0o644)).unwrap();
++        assert_ne!(tree_digest_of_dir(dir.path()).unwrap(), expected);
++    }
++
++    #[test]
++    fn rejects_symlinks_and_special_files_in_extracted_tree() {
++        let dir = tempfile::tempdir().unwrap();
++        let link = dir.path().join("link");
++        symlink("missing", &link).unwrap();
++        assert!(tree_digest_of_dir(dir.path()).is_err());
++        fs::remove_file(link).unwrap();
++
++        let fifo = dir.path().join("pipe");
++        let path = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
++        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
++        assert!(tree_digest_of_dir(dir.path()).is_err());
+     }
+ 
+     #[test]

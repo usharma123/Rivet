@@ -1,0 +1,93 @@
+
+==> [build] build registry and CLI
+
+==> [tmp] import a global tool (prettier) and run it sandboxed
+
+==> [tmp] install a real project (137-package tree, native optional deps, peers)
+
+==> [tmp] installed packages work with plain Node resolution
+
+==> [tmp] run executables from the project through the sandbox
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] node_modules/.bin shims go through rivet
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] verify checks installed files, explicit versions and malformed state
+
+==> [tmp] frozen reinstall from rivet.lock re-verifies every package
+
+==> [tmp] benchmark rivet run against plain node on the installed tree
+{"placement": "tmp", "platform": "darwin", "packages": 137, "command": "semver 1.2.3 -r ^1.0.0", "first_run_s": 0.183, "warm_median_s": 0.201, "plain_node_median_s": 0.065, "max_child_rss_mib": 52.1, "verify_phases_ms": {"fetch_ms": 6, "hash_ms": 60, "layout_ms": 25, "other_ms": 50, "total_ms": 141}}
+
+==> [tmp] tampering with an installed file is detected before running
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] native publish, audit and install (@rivet-examples/hello-cli)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] publishing a name that npm already serves needs the admin token
+
+==> [tmp] a credential-stealing package is blocked by the registry audit
+
+==> [tmp] revocation takes effect at run time
+
+==> [tmp] offline runs use unexpired cached attestations
+
+==> [tmp] a different registry key is rejected
+
+[tmp] all checks passed in /var/folders/l3/6x2gqh2x1rbdkr21_hzckff40000gn/T//rivet-e2e.651dlb
+
+==> [home] import a global tool (prettier) and run it sandboxed
+
+==> [home] install a real project (137-package tree, native optional deps, peers)
+
+==> [home] installed packages work with plain Node resolution
+
+==> [home] run executables from the project through the sandbox
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] node_modules/.bin shims go through rivet
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] verify checks installed files, explicit versions and malformed state
+
+==> [home] frozen reinstall from rivet.lock re-verifies every package
+
+==> [home] benchmark rivet run against plain node on the installed tree
+{"placement": "home", "platform": "darwin", "packages": 137, "command": "semver 1.2.3 -r ^1.0.0", "first_run_s": 0.187, "warm_median_s": 0.176, "plain_node_median_s": 0.064, "max_child_rss_mib": 52.3, "verify_phases_ms": {"fetch_ms": 7, "hash_ms": 37, "layout_ms": 16, "other_ms": 48, "total_ms": 108}}
+
+==> [home] tampering with an installed file is detected before running
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] native publish, audit and install (@rivet-examples/hello-cli)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] publishing a name that npm already serves needs the admin token
+
+==> [home] a credential-stealing package is blocked by the registry audit
+
+==> [home] revocation takes effect at run time
+
+==> [home] offline runs use unexpired cached attestations
+
+==> [home] a different registry key is rejected
+
+[home] all checks passed in /Users/utsavsharma/.rivet-e2e.igSSrM
+
+All end-to-end checks passed (tmp home).
+kept /var/folders/l3/6x2gqh2x1rbdkr21_hzckff40000gn/T//rivet-e2e-build.dyFyva
+kept /var/folders/l3/6x2gqh2x1rbdkr21_hzckff40000gn/T//rivet-e2e.651dlb
+kept /Users/utsavsharma/.rivet-e2e.igSSrM
