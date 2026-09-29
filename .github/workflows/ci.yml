@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, 'dependabot/**']
   merge_group:
   workflow_dispatch:
   schedule:
@@ -261,7 +261,8 @@ jobs:
 
   required:
     name: Rivet required checks
-    if: always()
+    # Superseded runs must stop instead of reporting cancelled jobs as failures.
+    if: ${{ !cancelled() }}
     needs: [workspace, product, portable-seed, compatibility, e2e, audit-trace, postgres, dependency-security]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
