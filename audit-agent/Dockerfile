@@ -2,7 +2,7 @@
 # --network=none, a read-only root, limited supervisor capabilities and tight
 # limits. Package probes drop UID, groups and effective capabilities; see
 # registry/internal/audit/docker.go.
-FROM node:24-alpine
+FROM node:26-alpine
 
 RUN apk add --no-cache tar gzip util-linux
 
