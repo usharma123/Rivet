@@ -1,0 +1,3 @@
+FROM python:3.13-alpine
+COPY observer.py /opt/rivet/observer.py
+ENTRYPOINT ["python3", "/opt/rivet/observer.py"]

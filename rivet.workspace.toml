@@ -86,8 +86,10 @@ paths = [
   "workspace.snapshot.json",
   "tools/workspace/**",
   "tools/e2e/**",
+  "tools/bench/**",
   "docs/adr/**",
   "docs/security-review.md",
+  "docs/verification-compatibility-work.md",
   ".github/**",
   "Makefile",
   "README.md",
@@ -103,14 +105,14 @@ release_group = "cli"
 public_interfaces = [
   "rivet command surface",
   "rivet.toml project manifest and [policy] behavior",
-  "rivet.lock v2 project lockfile behavior",
+  "rivet.lock v3 portable target graphs and contextual peer bindings",
   "local content-addressed store layout",
   "node_modules virtual-store layout and .bin shims",
   "registry key pinning (trust on first use)",
   "run-time sandbox (seatbelt / bubblewrap)",
 ]
 validation_commands = ["make cli-test", "make cli-clippy", "make cli-fmt-check"]
-docs = ["README.md", "docs/adr/0004-lockfile-resolver-policy.md", "docs/adr/0007-signed-attestations-and-runtime-sandbox.md", "docs/security-review.md"]
+docs = ["README.md", "docs/adr/0004-lockfile-resolver-policy.md", "docs/adr/0007-signed-attestations-and-runtime-sandbox.md", "docs/security-review.md", "docs/verification-compatibility-work.md"]
 schemas = ["schemas/rivet-manifest.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-attestation.schema.json", "schemas/event.schema.json"]
 
 [[components]]
@@ -138,12 +140,13 @@ path = "audit-agent"
 owners = ["rivet-security"]
 release_group = "audit"
 public_interfaces = [
-  "gVisor audit container contract (no network, honeytokens, egress hook)",
-  "signed registry audit evidence shape",
-  "Node dynamic audit-agent image",
+  "gVisor package workload and trusted host runsc trace contract",
+  "independent runc SecCheck observer with nonce and completion evidence",
+  "signed registry audit evidence shape with fail-closed collection",
+  "Node workload image and Python observer image",
 ]
 validation_commands = ["make audit-agent-check"]
-docs = ["README.md", "docs/adr/0005-audit-trust-policy.md"]
+docs = ["README.md", "docs/adr/0005-audit-trust-policy.md", "docs/verification-compatibility-work.md"]
 schemas = ["schemas/event.schema.json"]
 
 [[components]]

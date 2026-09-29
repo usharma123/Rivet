@@ -1,49 +1,197 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.rivet.dev/rivet-lock.schema.json",
-  "title": "Rivet Lockfile",
-  "description": "Fully resolved dependency graph. Every package is pinned to the artifact hash and tree digest signed by one registry key; installs re-verify fresh signed statements against these values.",
+  "title": "Rivet Lockfile v3",
+  "description": "Pinned dependency graphs for darwin/linux arm64/x64. Each selected graph is reverified against fresh signed statements.",
   "type": "object",
-  "required": ["version", "registry", "registry_key", "roots", "packages"],
+  "required": [
+    "version",
+    "registry",
+    "registry_key",
+    "roots",
+    "packages",
+    "variants"
+  ],
   "properties": {
-    "version": { "const": 2 },
-    "registry": { "type": "string", "description": "Registry base URL the graph was resolved against." },
-    "registry_key": { "type": "string", "pattern": "^ed25519:[0-9a-f]{32}$" },
+    "version": {
+      "const": 3
+    },
+    "registry": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Registry base URL the graph was resolved against."
+    },
+    "registry_key": {
+      "type": "string",
+      "pattern": "^ed25519:[0-9a-f]{32}$"
+    },
+    "roots": {
+      "$ref": "#/$defs/roots",
+      "description": "Selected roots in installed receipts; empty in portable project lock."
+    },
+    "packages": {
+      "$ref": "#/$defs/packages",
+      "description": "Selected packages in installed receipts; empty in portable project lock."
+    },
+    "variants": {
+      "type": "object",
+      "description": "Explicit pinned graph for each supported target. A signed required platform exclusion may mark a target unsupported.",
+      "required": [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64",
+        "linux-x64"
+      ],
+      "properties": {
+        "darwin-arm64": {
+          "$ref": "#/$defs/variant"
+        },
+        "darwin-x64": {
+          "$ref": "#/$defs/variant"
+        },
+        "linux-arm64": {
+          "$ref": "#/$defs/variant"
+        },
+        "linux-x64": {
+          "$ref": "#/$defs/variant"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "lockedRoot": {
+      "type": "object",
+      "required": [
+        "spec",
+        "package"
+      ],
+      "properties": {
+        "spec": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string",
+          "description": "Contextual package instance ID."
+        }
+      },
+      "additionalProperties": false
+    },
+    "lockedPackage": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "artifact",
+        "tree_digest",
+        "state",
+        "verdict",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "string",
+          "pattern": "^sha512-[0-9a-f]{128}$"
+        },
+        "tree_digest": {
+          "type": "string",
+          "pattern": "^rivet-tree-v1:sha256:[0-9a-f]{64}$"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "warned",
+            "yanked",
+            "pending",
+            "quarantined",
+            "blocked",
+            "revoked",
+            "archived"
+          ]
+        },
+        "verdict": {
+          "type": "string"
+        },
+        "provenance": {
+          "enum": [
+            "verified",
+            "absent",
+            "invalid",
+            "unverifiable"
+          ]
+        },
+        "dependencies": {
+          "type": "object",
+          "description": "Alias to contextual instance ID.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "install_scripts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "peer_bindings": {
+          "type": "object",
+          "description": "Peer alias to contextual provider instance ID.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "roots": {
       "type": "object",
-      "description": "Direct dependencies from rivet.toml, keyed by alias.",
       "additionalProperties": {
-        "type": "object",
-        "required": ["spec", "package"],
-        "properties": {
-          "spec": { "type": "string" },
-          "package": { "type": "string", "description": "Package id (name@version)." }
-        }
+        "$ref": "#/$defs/lockedRoot"
       }
     },
     "packages": {
       "type": "object",
-      "description": "Every package in the graph, keyed by id (name@version).",
       "additionalProperties": {
-        "type": "object",
-        "required": ["name", "version", "artifact", "tree_digest", "state", "verdict", "provenance"],
-        "properties": {
-          "name": { "type": "string" },
-          "version": { "type": "string" },
-          "artifact": { "type": "string", "pattern": "^sha512-[0-9a-f]{128}$" },
-          "tree_digest": { "type": "string", "pattern": "^rivet-tree-v1:sha256:[0-9a-f]{64}$" },
-          "state": { "enum": ["active", "warned", "yanked", "pending", "quarantined", "blocked", "revoked", "archived"] },
-          "verdict": { "type": "string" },
-          "provenance": { "enum": ["verified", "absent", "invalid", "unverifiable"] },
-          "dependencies": {
-            "type": "object",
-            "description": "Alias in node_modules to package id.",
-            "additionalProperties": { "type": "string" }
-          },
-          "optional": { "type": "boolean" },
-          "install_scripts": { "type": "array", "items": { "type": "string" } }
-        }
+        "$ref": "#/$defs/lockedPackage"
       }
+    },
+    "variant": {
+      "type": "object",
+      "required": [
+        "roots",
+        "packages"
+      ],
+      "properties": {
+        "roots": {
+          "$ref": "#/$defs/roots"
+        },
+        "packages": {
+          "$ref": "#/$defs/packages"
+        },
+        "unsupported": {
+          "type": "string"
+        }
+      },
+      "if": {
+        "required": ["unsupported"]
+      },
+      "then": {
+        "properties": {
+          "roots": { "maxProperties": 0 },
+          "packages": { "maxProperties": 0 }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -182,9 +182,9 @@ pub struct AuditDiff {
 impl PackageManifest {
     /// The declared spec for a dependency alias of any kind.
     pub fn dependency_spec(&self, alias: &str) -> Option<&String> {
-        self.dependencies
+        self.optional_dependencies
             .get(alias)
-            .or_else(|| self.optional_dependencies.get(alias))
+            .or_else(|| self.dependencies.get(alias))
             .or_else(|| self.peer_dependencies.get(alias))
     }
 }

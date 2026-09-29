@@ -1,16 +1,13 @@
-# ADR 0004: Lockfile And Resolver Policy
+# ADR 0004: Lockfile and resolver policy
 
-Status: accepted (revised for lockfile v2)
+Status: accepted (revised for lockfile v3)
 
-The registry resolves versions; the CLI walks the graph. For each `(name, range)` the CLI asks `POST /v1/npm/resolve`, and the registry applies npm semver rules (ranges, dist-tags, `npm:` aliases expanded by the client), skips releases inside the cooldown window, skips releases whose audit left them `quarantined`, `blocked`, `revoked` or `yanked`, imports and audits the chosen version, and returns a signed statement. The CLI only follows dependencies listed in signed statements, never files it downloaded.
+The registry chooses and signs releases. Rivet expands only the dependencies in signed manifests. It asks `POST /v1/npm/resolve` for each `(name, range)`, and the registry applies npm ranges, dist tags, cooldown, and unsafe release filtering. Git, URL, and `file:` specs remain unsupported because this trust path cannot audit them.
 
-Resolver rules:
+A project `rivet.lock` v3 contains a complete pinned graph for each supported target: `darwin-arm64`, `darwin-x64`, `linux-arm64`, and `linux-x64`. All variants share one registry URL and signing key. Each graph records roots, contextual package instances, signed release identities, artifact hashes, tree digests, and dependency edges. Portable resolution reuses signed registry responses across target walks. A required package whose signed `os` or `cpu` constraints exclude a target marks that target unsupported. An unresolved required pin, network failure, or policy refusal outside an optional branch fails portable resolution. Failures confined to an optional branch can remove that branch. Unsupported targets fail frozen installation with a clear error.
 
-- Dependencies are deduplicated by sending already-chosen versions as `prefer`; peers resolve the same way so a graph shares one copy where ranges allow.
-- Optional dependencies (including platform packages filtered by `os`/`cpu`) may fail or be skipped; required ones fail the install.
-- git, URL, `file:` and other non-registry specs are refused: they cannot be audited.
-- Several versions of one package can coexist (pnpm-style `node_modules/.rivet/<id>` virtual store).
+Frozen install selects the exact target graph, fetches fresh signed statements, checks its package identities and declared edges, and materializes only that graph. It does not call the version resolver or rewrite the portable lock. The installed receipt records the selected graph, not all target variants. Ordinary install reuses a satisfying v3 lock and also keeps its bytes. It regenerates v2 locks as v3; `--frozen` rejects v2 with a migration instruction. Pre-v2 locks also require ordinary installation to regenerate.
 
-`rivet.lock` v2 records the roots, every package id, its artifact hash, tree digest, state, verdict and provenance, the dependency edges, and the registry key the graph was signed with. A lockfile install fetches fresh statements for every package and fails if the registry now describes different content for a pinned version. Lockfiles from another registry key are refused. v1 lockfiles carry no signed identity and are re-resolved.
+Optional platform packages remain pinned in each target where their signed metadata applies. A failed required descendant removes its optional ancestor branch. A required root or required branch failure stops the install. `optionalDependencies` takes precedence if an alias also appears in `dependencies` or `peerDependencies`.
 
-The policy goal is npm compatibility with stronger trust guarantees, not a line-for-line clone of npm internals.
+Peer dependencies bind to a provider visible in the consuming package's parent context. An incompatible present provider is an error. Missing required peers are resolved as one coherent choice for siblings; missing optional peers stay absent. A provider retains the context where it was declared, even when a consumer has a nearer dependency with the same name. Separate contextual instance IDs distinguish the same signed release under different bindings; signed release identity remains `name@version`. Context expansion has finite instance and depth limits and reports an error if a graph exceeds them.

@@ -1,0 +1,3 @@
+# Preserve archived patch bytes and their recorded hashes. Unified-diff context
+# lines intentionally contain a single space, including otherwise blank lines.
+tools/bench/results/*.patch -whitespace

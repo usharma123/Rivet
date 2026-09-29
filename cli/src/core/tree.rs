@@ -6,7 +6,7 @@ use std::{
     collections::BTreeMap,
     fs,
     io::{Cursor, Read},
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::Path,
 };
 
@@ -113,7 +113,10 @@ pub fn tree_digest<'a>(files: impl Iterator<Item = (&'a str, bool, &'a [u8])>) -
 /// Recomputes the tree digest of an extracted package directory. Symlinks or
 /// special files inside a package directory are treated as tampering.
 pub fn tree_digest_of_dir(root: &Path) -> Result<String> {
-    let mut files: Vec<(String, bool, Vec<u8>)> = Vec::new();
+    // Keep only per-file digests in memory. A package can contain files close
+    // to the archive limit, and verification runs before every command.
+    let mut files: Vec<(String, bool, [u8; 32])> = Vec::new();
+    let mut buffer = [0u8; 64 * 1024];
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = entry?;
         let file_type = entry.file_type();
@@ -132,12 +135,49 @@ pub fn tree_digest_of_dir(root: &Path) -> Result<String> {
                 root.display()
             );
         }
-        let metadata = entry.metadata()?;
-        let data = fs::read(entry.path())?;
-        files.push((relative, metadata.permissions().mode() & 0o111 != 0, data));
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            // O_NONBLOCK prevents a swapped-in FIFO from hanging verification.
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(entry.path())?;
+        let metadata = file.metadata()?;
+        if !metadata.is_file() {
+            bail!(
+                "unexpected non-regular file {relative} in {}",
+                root.display()
+            );
+        }
+        let mut hasher = Sha256::new();
+        loop {
+            let count = match file.read(&mut buffer) {
+                Ok(count) => count,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => return Err(err.into()),
+            };
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
+        }
+        files.push((
+            relative,
+            metadata.permissions().mode() & 0o111 != 0,
+            hasher.finalize().into(),
+        ));
     }
-    Ok(tree_digest(
-        files.iter().map(|(p, x, d)| (p.as_str(), *x, d.as_slice())),
+    files.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    let mut hasher = Sha256::new();
+    for (path, executable, digest) in files {
+        hasher.update(path.as_bytes());
+        hasher.update([0]);
+        hasher.update(if executable { b"x" } else { b"-" });
+        hasher.update([0]);
+        hasher.update(hex::encode(digest).as_bytes());
+        hasher.update(b"\n");
+    }
+    Ok(format!(
+        "{TREE_DIGEST_PREFIX}{}",
+        hex::encode(hasher.finalize())
     ))
 }
 
@@ -163,6 +203,7 @@ pub fn write_package(package: &CanonPackage, dest: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
 
     const VECTOR: &[u8] = include_bytes!("../../../fixtures/tarballs/tree-vector.tgz");
     const VECTOR_DIGEST: &str = include_str!("../../../fixtures/tarballs/tree-vector.digest");
@@ -203,6 +244,69 @@ mod tests {
             tree_digest_of_dir(dir.path()).unwrap(),
             VECTOR_DIGEST.trim()
         );
+        fs::remove_file(extra).unwrap();
+        fs::remove_file(dir.path().join("lib/a.js")).unwrap();
+        assert_ne!(
+            tree_digest_of_dir(dir.path()).unwrap(),
+            VECTOR_DIGEST.trim()
+        );
+    }
+
+    #[test]
+    fn empty_directory_has_empty_canonical_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            tree_digest_of_dir(dir.path()).unwrap(),
+            tree_digest(std::iter::empty())
+        );
+    }
+
+    #[test]
+    fn streams_large_file_with_canonical_digest_and_detects_tail_tampering() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.bin");
+        let data = vec![0x5a; 32 * 1024 * 1024];
+        fs::write(&path, &data).unwrap();
+        let expected = tree_digest(std::iter::once(("large.bin", false, data.as_slice())));
+        assert_eq!(tree_digest_of_dir(dir.path()).unwrap(), expected);
+
+        let mut changed = data;
+        *changed.last_mut().unwrap() = 0x5b;
+        fs::write(&path, changed).unwrap();
+        assert_ne!(tree_digest_of_dir(dir.path()).unwrap(), expected);
+    }
+
+    #[test]
+    fn streams_empty_and_multiple_files_with_executable_modes() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("empty"), []).unwrap();
+        fs::write(dir.path().join("script"), b"#!/bin/sh\n").unwrap();
+        fs::set_permissions(dir.path().join("script"), fs::Permissions::from_mode(0o755)).unwrap();
+        let expected = tree_digest(
+            [
+                ("script", true, b"#!/bin/sh\n".as_slice()),
+                ("empty", false, b"".as_slice()),
+            ]
+            .into_iter(),
+        );
+        assert_eq!(tree_digest_of_dir(dir.path()).unwrap(), expected);
+
+        fs::set_permissions(dir.path().join("script"), fs::Permissions::from_mode(0o644)).unwrap();
+        assert_ne!(tree_digest_of_dir(dir.path()).unwrap(), expected);
+    }
+
+    #[test]
+    fn rejects_symlinks_and_special_files_in_extracted_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("link");
+        symlink("missing", &link).unwrap();
+        assert!(tree_digest_of_dir(dir.path()).is_err());
+        fs::remove_file(link).unwrap();
+
+        let fifo = dir.path().join("pipe");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(tree_digest_of_dir(dir.path()).is_err());
     }
 
     #[test]

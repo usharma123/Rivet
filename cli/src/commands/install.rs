@@ -10,7 +10,7 @@ use crate::core::{
     output::{emit_many, Event},
     paths::ProjectPaths,
     policy::Policy,
-    resolver::{Graph, Resolver},
+    resolver::{target_key, Graph, Resolver},
     session::Session,
 };
 use crate::CommonFlags;
@@ -26,6 +26,13 @@ pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
     let session = Session::open()?;
     let lock = Lockfile::read_current(&paths.lockfile)?;
     if let Some(lock) = &lock {
+        if !lock.registry.is_empty() && lock.registry != session.client.base_url() {
+            bail!(
+                "rivet.lock pins registry {} but this session uses {}",
+                lock.registry,
+                session.client.base_url()
+            );
+        }
         if !lock.registry_key.is_empty() && lock.registry_key != session.key.keyid {
             bail!(
                 "rivet.lock was signed by registry key {} but {} uses {}; refusing to mix trust roots",
@@ -44,13 +51,19 @@ pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
     let from_lock = lock
         .as_ref()
         .is_some_and(|l| l.satisfies(&manifest.dependencies));
-    let graph = if from_lock {
-        resolver.load_lockfile(lock.as_ref().expect("lock present"))?
-    } else if frozen {
-        bail!("rivet.lock is missing or out of date with rivet.toml (--frozen)");
+    if frozen && lock.as_ref().is_some_and(|l| l.version == 2) {
+        bail!("rivet.lock v2 has no portable target pins; run `rivet install` to regenerate v3 before using --frozen");
+    }
+    if frozen && !from_lock {
+        bail!("rivet.lock is missing, incomplete, or out of date with rivet.toml (--frozen)");
+    }
+    let portable = if from_lock {
+        lock.as_ref().expect("checked above").clone()
     } else {
-        resolver.resolve(&manifest.dependencies)?
+        resolver.resolve_portable(&manifest.dependencies)?
     };
+    let selected = portable.selected(&target_key()?)?;
+    let graph = resolver.load_lockfile(&selected)?;
 
     if flags.dry_run || flags.plan {
         return emit_graph(
@@ -62,8 +75,10 @@ pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
             from_lock,
         );
     }
-    let (state, report) = materialize(&session, &policy, &paths.root, &graph, &flags)?;
-    state.lock.write_to(&paths.lockfile)?;
+    let (_state, report) = materialize(&session, &policy, &paths.root, &graph, &flags)?;
+    if !from_lock {
+        portable.write_to(&paths.lockfile)?;
+    }
     paths.ensure_metadata()?;
     emit_graph(
         &flags,

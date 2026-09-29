@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * 1'
 
 permissions:
   contents: read
@@ -12,6 +16,10 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   workspace:
@@ -23,122 +31,170 @@ jobs:
           persist-credentials: false
       - run: make workspace-check
       - run: make docs-check
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: registry/go.mod
+          cache: false
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: actionlint -color
+      - run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
   product:
-    runs-on: ubuntu-24.04
     needs: workspace
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: ./.github/actions/setup-rivet
         with:
-          toolchain: stable
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: product
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        id: go
-        with:
-          go-version-file: registry/go.mod
-          cache: false
-      # Cache entries are immutable; each job must save its own build cache.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Install bubblewrap for the Linux sandbox tests
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap
-          # Ubuntu 24.04 blocks unprivileged user namespaces via AppArmor;
-          # bubblewrap needs them to build the sandbox.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          cache-key: product
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
       - run: make cli-test
       - run: make cli-clippy
       - run: make fmt-check
       - run: make registry-test
       - run: make audit-agent-check
+      - run: cd registry && go vet ./...
+      - name: Registry race detector and coverage
+        run: cd registry && go test -race -count=1 -coverprofile="$RUNNER_TEMP/evidence/go-coverage.out" ./...
+      - name: Preserve evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: product-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 14
 
-  e2e:
-    # Live run against registry.npmjs.org in both placements (temp dir and
-    # under $HOME), exercising the real bubblewrap sandbox end to end.
-    runs-on: ubuntu-24.04
+  portable-seed:
     needs: workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rivet
+        with:
+          cache-key: compatibility
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
+      - name: Create shared portable lock with public test identity
+        run: |
+          python3 -u tools/e2e/compatibility.py --native             --lock-output "$RUNNER_TEMP/portable/rivet.lock"             --evidence-dir "$RUNNER_TEMP/evidence" 2>&1 | tee "$RUNNER_TEMP/evidence/console.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: portable-lock
+          path: ${{ runner.temp }}/portable/rivet.lock
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: portable-seed-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  compatibility:
+    needs: portable-seed
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: ./.github/actions/setup-rivet
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+          cache-key: compatibility
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          key: e2e
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        id: go
-        with:
-          go-version-file: registry/go.mod
-          cache: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Install bubblewrap for the Linux sandbox tests
+          name: portable-lock
+          path: ${{ runner.temp }}/portable
+      - name: Shared frozen lock, signed peers, and real projects
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap
-          # Ubuntu 24.04 blocks unprivileged user namespaces via AppArmor;
-          # bubblewrap needs them to build the sandbox.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: Live npm end-to-end checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RIVET_E2E_LOG_DIR"
-          make e2e 2>&1 | tee "$RUNNER_TEMP/e2e-console.log"
-        env:
-          RIVET_E2E_BENCH_OUT: ${{ runner.temp }}/bench.jsonl
-          RIVET_E2E_LOG_DIR: ${{ runner.temp }}/e2e-logs
-      - name: Run-time benchmark
-        if: always()
-        run: |
-          if [ -f "$RUNNER_TEMP/bench.jsonl" ]; then cat "$RUNNER_TEMP/bench.jsonl"; fi
-      - name: Upload end-to-end logs
+          python3 -u tools/e2e/compatibility.py --native --corpus             --lock-input "$RUNNER_TEMP/portable/rivet.lock"             --evidence-dir "$RUNNER_TEMP/evidence" 2>&1 | tee "$RUNNER_TEMP/evidence/console.log"
+      - name: Preserve evidence, including failures
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-logs-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/e2e-console.log
-            ${{ runner.temp }}/bench.jsonl
-            ${{ runner.temp }}/e2e-logs/*.log
-          if-no-files-found: warn
-          retention-days: 7
+          name: compatibility-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  e2e:
+    needs: workspace
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rivet
+        with:
+          cache-key: e2e
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
+      - name: Live npm, tamper, revocation, and sandbox checks in temp and HOME
+        run: make e2e 2>&1 | tee "$RUNNER_TEMP/evidence/console.log"
+        env:
+          RIVET_E2E_BENCH_OUT: ${{ runner.temp }}/evidence/bench.jsonl
+          RIVET_E2E_LOG_DIR: ${{ runner.temp }}/evidence
+      - name: Preserve evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  audit-trace:
+    needs: workspace
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rivet
+        with:
+          cache-key: audit-trace
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
+      - name: Live gVisor certification and native adversarial probes
+        run: tools/e2e/audit-trace.sh 2>&1 | tee "$RUNNER_TEMP/evidence/audit-trace.log"
+      - name: Preserve evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: audit-trace-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 14
 
   postgres:
-    runs-on: ubuntu-24.04
     needs: workspace
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -146,26 +202,76 @@ jobs:
           POSTGRES_USER: rivet
           POSTGRES_PASSWORD: rivet
           POSTGRES_DB: rivet_test
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U rivet" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        id: go
+      - uses: ./.github/actions/setup-rivet
         with:
-          go-version-file: registry/go.mod
-          cache: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ github.job }}-${{ steps.go.outputs.go-version }}-
+          cache-key: postgres
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
       - run: make registry-test-postgres
         env:
           RIVET_TEST_DATABASE_URL: postgres://rivet:rivet@localhost:5432/rivet_test?sslmode=disable
+      - name: Production startup, authorization, and restart persistence
+        run: python3 -u tools/e2e/production.py
+        env:
+          RIVET_TEST_DATABASE_URL: postgres://rivet:rivet@localhost:5432/rivet_test?sslmode=disable
+          RIVET_PRODUCTION_EVIDENCE: ${{ runner.temp }}/evidence
+      - name: Preserve evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: postgres-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  dependency-security:
+    needs: workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rivet
+        with:
+          cache-key: dependency-security
+      - run: python3 tools/ci/receipt.py "$RUNNER_TEMP/evidence/source.json"
+      - run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - name: Rust advisory database
+        run: cargo audit --json > "$RUNNER_TEMP/evidence/cargo-audit.json"
+      - name: Go reachable vulnerabilities
+        if: success() || failure()
+        run: cd registry && govulncheck -json ./... > "$RUNNER_TEMP/evidence/govulncheck.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: dependency-security-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/
+          retention-days: 14
+
+  required:
+    name: Rivet required checks
+    if: always()
+    needs: [workspace, product, portable-seed, compatibility, e2e, audit-trace, postgres, dependency-security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any required job failed, was cancelled, or was skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failures = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          print(json.dumps(results, indent=2))
+          if failures:
+              raise SystemExit(f"Required checks did not pass: {failures}")
+          PYCODE

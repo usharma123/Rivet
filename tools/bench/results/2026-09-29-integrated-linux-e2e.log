@@ -1,0 +1,461 @@
+running as rivet (uid 1000)
+bubblewrap user namespaces: ok
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anstyle-query v1.1.5
+  Downloaded adler2 v2.0.1
+  Downloaded anstream v1.0.0
+  Downloaded block-buffer v0.10.4
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded atomic-waker v1.1.2
+  Downloaded bitflags v2.13.0
+  Downloaded clap_lex v1.1.0
+  Downloaded errno v0.3.14
+  Downloaded dirs-sys v0.5.0
+  Downloaded colorchoice v1.0.5
+  Downloaded anstyle-parse v1.0.0
+  Downloaded cfg-if v1.0.4
+  Downloaded cpufeatures v0.2.17
+  Downloaded base64ct v1.8.3
+  Downloaded rustc_version v0.4.1
+  Downloaded rand_core v0.6.4
+  Downloaded crypto-common v0.1.7
+  Downloaded anstyle v1.0.14
+  Downloaded equivalent v1.0.2
+  Downloaded bytecount v0.6.9
+  Downloaded fastrand v2.5.0
+  Downloaded filetime v0.2.29
+  Downloaded ed25519 v2.2.3
+  Downloaded rustc-hash v2.1.2
+  Downloaded anyhow v1.0.102
+  Downloaded same-file v1.0.6
+  Downloaded percent-encoding v2.3.2
+  Downloaded powerfmt v0.2.0
+  Downloaded const-oid v0.9.6
+  Downloaded dirs v6.0.0
+  Downloaded deranged v0.5.8
+  Downloaded digest v0.10.7
+  Downloaded rand_core v0.9.5
+  Downloaded cfg_aliases v0.2.1
+  Downloaded hex v0.4.3
+  Downloaded walkdir v2.5.0
+  Downloaded futures-sink v0.3.32
+  Downloaded rustls-pki-types v1.14.1
+  Downloaded version_check v0.9.5
+  Downloaded potential_utf v0.1.5
+  Downloaded generic-array v0.14.7
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded serde_spanned v1.1.1
+  Downloaded find-msvc-tools v0.1.9
+  Downloaded displaydoc v0.2.6
+  Downloaded lru-slab v0.1.2
+  Downloaded zerofrom v0.1.8
+  Downloaded signature v2.2.0
+  Downloaded strsim v0.11.1
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded tinyvec_macros v0.1.1
+  Downloaded itoa v1.0.18
+  Downloaded http-body v1.0.1
+  Downloaded idna_adapter v1.2.2
+  Downloaded num-conv v0.2.2
+  Downloaded form_urlencoded v1.2.2
+  Downloaded futures-core v0.3.32
+  Downloaded yoke-derive v0.8.2
+  Downloaded futures-io v0.3.32
+  Downloaded heck v0.5.0
+  Downloaded time-core v0.1.9
+  Downloaded untrusted v0.9.0
+  Downloaded xattr v1.6.1
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded subtle v2.6.1
+  Downloaded urlencoding v2.1.3
+  Downloaded utf8parse v0.2.2
+  Downloaded tower-service v0.3.3
+  Downloaded clap_derive v4.6.1
+  Downloaded crc32fast v1.5.0
+  Downloaded sync_wrapper v1.0.2
+  Downloaded try-lock v0.2.5
+  Downloaded tower-layer v0.3.3
+  Downloaded want v0.3.1
+  Downloaded semver v1.0.28
+  Downloaded futures-task v0.3.32
+  Downloaded ryu v1.0.23
+  Downloaded hyper-rustls v0.27.9
+  Downloaded quote v1.0.46
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded miette-derive v7.6.0
+  Downloaded base64 v0.22.1
+  Downloaded pkcs8 v0.10.2
+  Downloaded pin-project-lite v0.2.17
+  Downloaded thiserror v2.0.18
+  Downloaded tinystr v0.8.3
+  Downloaded thiserror-impl v2.0.18
+  Downloaded spki v0.7.3
+  Downloaded toml_writer v1.1.1+spec-1.1.0
+  Downloaded zeroize v1.9.0
+  Downloaded synstructure v0.13.2
+  Downloaded rand_chacha v0.9.0
+  Downloaded utf8_iter v1.0.4
+  Downloaded writeable v0.6.3
+  Downloaded node-semver v2.2.0
+  Downloaded option-ext v0.2.0
+  Downloaded shlex v2.0.1
+  Downloaded zerovec-derive v0.11.3
+  Downloaded getrandom v0.3.4
+  Downloaded rustls-webpki v0.103.13
+  Downloaded serde_core v1.0.228
+  Downloaded toml_datetime v0.7.5+spec-1.1.0
+  Downloaded futures-channel v0.3.32
+  Downloaded quinn-udp v0.5.14
+  Downloaded sha2 v0.10.9
+  Downloaded ipnet v2.12.0
+  Downloaded smallvec v1.15.2
+  Downloaded bytes v1.12.0
+  Downloaded clap v4.6.1
+  Downloaded httparse v1.10.1
+  Downloaded flate2 v1.1.9
+  Downloaded tempfile v3.27.0
+  Downloaded simd-adler32 v0.3.9
+  Downloaded zmij v1.0.21
+  Downloaded thiserror-impl v1.0.69
+  Downloaded time-macros v0.2.32
+  Downloaded tokio-rustls v0.26.4
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded http-body-util v0.1.3
+  Downloaded thiserror v1.0.69
+  Downloaded litemap v0.8.2
+  Downloaded slab v0.4.12
+  Downloaded yoke v0.8.3
+  Downloaded serde v1.0.228
+  Downloaded serde_derive v1.0.228
+  Downloaded toml v0.9.12+spec-1.1.0
+  Downloaded unicode-ident v1.0.24
+  Downloaded rand v0.9.4
+  Downloaded icu_properties v2.2.0
+  Downloaded der v0.7.10
+  Downloaded once_cell v1.21.4
+  Downloaded icu_provider v2.2.0
+  Downloaded getrandom v0.2.17
+  Downloaded socket2 v0.6.4
+  Downloaded log v0.4.33
+  Downloaded tracing-core v0.1.36
+  Downloaded ed25519-dalek v2.2.0
+  Downloaded cc v1.2.65
+  Downloaded icu_normalizer v2.2.0
+  Downloaded icu_normalizer_data v2.2.0
+  Downloaded tar v0.4.46
+  Downloaded tinyvec v1.11.0
+  Downloaded minimal-lexical v0.2.1
+  Downloaded miniz_oxide v0.8.9
+  Downloaded url v2.5.8
+  Downloaded zerotrie v0.2.4
+  Downloaded icu_locale_core v2.2.0
+  Downloaded icu_collections v2.2.0
+  Downloaded proc-macro2 v1.0.106
+  Downloaded quinn v0.11.11
+  Downloaded reqwest v0.12.28
+  Downloaded tower v0.5.3
+  Downloaded mio v1.2.1
+  Downloaded typenum v1.20.1
+  Downloaded http v1.4.2
+  Downloaded memchr v2.8.2
+  Downloaded miette v7.6.0
+  Downloaded zerovec v0.11.6
+  Downloaded hyper-util v0.1.20
+  Downloaded indexmap v2.14.0
+  Downloaded nom v7.1.3
+  Downloaded idna v1.1.0
+  Downloaded serde_json v1.0.150
+  Downloaded tower-http v0.6.11
+  Downloaded hyper v1.10.1
+  Downloaded clap_builder v4.6.0
+  Downloaded hashbrown v0.17.1
+  Downloaded winnow v1.0.3
+  Downloaded futures-util v0.3.32
+  Downloaded icu_properties_data v2.2.0
+  Downloaded winnow v0.7.15
+  Downloaded quinn-proto v0.11.15
+  Downloaded curve25519-dalek v4.1.3
+  Downloaded webpki-roots v1.0.8
+  Downloaded time v0.3.55
+  Downloaded zerocopy v0.8.52
+  Downloaded unicode-width v0.1.14
+  Downloaded syn v2.0.118
+  Downloaded rustls v0.23.41
+  Downloaded rustix v1.1.4
+  Downloaded tracing v0.1.44
+  Downloaded libc v0.2.186
+  Downloaded tokio v1.52.3
+  Downloaded ring v0.17.14
+  Downloaded linux-raw-sys v0.12.1
+   Compiling rivet v0.1.0 (/home/rivet/work/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.56s
+     Running unittests src/lib.rs (/home/rivet/target/debug/deps/rivet-b9bdac011b9f9d09)
+
+running 83 tests
+test commands::eval::tests::parses_eval_package_spec ... ok
+test commands::add::tests::parses_unscoped_dependency_specs ... ok
+test commands::release::tests::parses_package_version_specs ... ok
+test commands::publish::tests::missing_publisher_increases_publish_risk ... ok
+test core::artifact::tests::sha512_hash_uses_rivet_prefix ... ok
+test core::attestation::tests::key_id_matches_registry_format ... ok
+test commands::eval::tests::deterministic_eval_returns_stub_verdict ... ok
+test core::installed::tests::changed_dependency_link_fails_verification ... ok
+test core::attestation::tests::verifies_signed_statement ... ok
+test core::attestation::tests::rejects_other_keys_and_expired_statements ... ok
+test core::attestation::tests::rejects_tampered_payload ... ok
+test core::installed::tests::hash_timing_rounds_parallel_wall_time_once ... ok
+test core::artifact::tests::project_tarballs_are_canonical_and_reproducible ... ok
+test core::linker::tests::command_names_cannot_inject_shell_or_escape_bin_directory ... ok
+test core::linker::tests::contextual_slot_fits_filesystem_component_for_long_package_name ... ok
+test core::linker::tests::executable_entry_rejects_lexical_escape ... ok
+test core::installed::tests::rejects_receipt_from_another_registry ... ok
+test core::linker::tests::relative_paths_between_virtual_store_entries ... ok
+test core::installed::tests::parallel_cache_keeps_newer_revocation_when_late_job_rolls_back ... ok
+test core::linker::tests::shims_quote_paths ... ok
+test core::installed::tests::rehashes_sibling_root_outside_the_commands_closure ... ok
+test core::installed::tests::accepts_unchanged_installed_package_and_links ... ok
+test core::linker::tests::failed_artifact_fetch_preserves_previous_installation ... ok
+test core::manifest::tests::manifest_round_trips_toml ... ok
+test core::output::tests::event_serializes_with_stable_event_key ... ok
+test core::lockfile::tests::v1_lockfiles_are_ignored ... ok
+test core::lockfile::tests::lockfile_round_trips_and_detects_staleness ... ok
+test core::linker::tests::failed_optional_script_is_removed_from_installed_state ... ok
+test core::installed::tests::verifies_existing_v2_installed_receipt_offline ... ok
+test core::policy::tests::overrides_are_explicit ... ok
+test core::policy::tests::default_policy_blocks_unsafe_states ... ok
+test core::policy::tests::provenance_and_cooldown_settings ... ok
+test core::resolver::tests::frozen_range_checks_follow_npm_semver_rules ... ok
+test core::resolver::tests::cyclic_wrapper_inherits_peer_relevance ... ok
+test core::resolver::tests::forged_peer_binding_fails_context_validation ... ok
+test core::resolver::tests::incompatible_present_peer_errors ... ok
+test core::installed::tests::parallel_hashing_covers_later_jobs_and_reports_first_tamper ... ok
+test core::resolver::tests::optional_failure_rekeys_parent_context ... ok
+test core::resolver::tests::package_alias_rejects_traversal_and_absolute_components ... ok
+test core::resolver::tests::optional_peer_is_absent_without_provider ... ok
+test core::resolver::tests::parses_aliases_and_scoped_names ... ok
+test core::resolver::tests::ordinary_dependency_cycle_stays_finite ... ok
+test core::installed::tests::fresh_revocation_blocks_later_offline_verification ... ok
+test core::resolver::tests::platform_matching_follows_npm ... ok
+test core::resolver::tests::optional_failure_removes_release_across_peer_contexts ... ok
+test core::installed::tests::fresh_revocation_is_cached_when_later_release_has_registry_error ... ok
+test core::resolver::tests::provider_keeps_its_declaration_context ... ok
+test core::resolver::tests::deep_dependency_chain_returns_error_before_stack_overflow ... ok
+test core::resolver::tests::peer_free_diamond_does_not_expand_paths ... ok
+test core::installed::tests::rejects_replayed_active_attestation_after_revocation ... ok
+test core::sandbox::tests::bubblewrap_hides_home_and_network ... ok
+test core::resolver::tests::nearest_alias_provider_preserves_distinct_context_instance ... ok
+test core::sandbox::tests::caller_secret_requires_explicit_environment_grant ... ok
+test core::resolver::tests::review_same_alias_different_packages_keeps_nested_wrapper_context ... ok
+test core::risk::tests::matches_registry_namesquat_cases ... ok
+test core::installed::tests::rejects_state_and_link_tampering_before_execution ... ok
+test core::sandbox::tests::seatbelt_profile_denies_network_and_secrets ... ok
+test core::store::tests::attestation_cache_is_scoped_to_registry_and_key ... ok
+test core::linker::tests::failed_required_script_preserves_previous_installation ... ok
+test core::store::tests::attestation_cache_refuses_rollback_and_artifact_swaps ... ok
+test core::store::tests::concurrent_attestation_writes_keep_revocation ... ok
+test core::linker::tests::global_install_script_builds_in_stage_without_editing_trust ... ok
+test core::store::tests::safe_id_keeps_scopes_readable ... ok
+test core::store::tests::rejects_malformed_artifact_hashes ... ok
+test core::tree::tests::empty_directory_has_empty_canonical_digest ... ok
+test core::tree::tests::matches_shared_tree_vector ... ok
+test core::store::tests::equal_time_revocation_conflict_is_rejected ... ok
+test core::tree::tests::extracted_directory_hashes_identically ... ok
+test core::tree::tests::rejects_traversal ... ok
+test core::tree::tests::rejects_symlinks_and_special_files_in_extracted_tree ... ok
+test core::tree::tests::streams_empty_and_multiple_files_with_executable_modes ... ok
+test core::resolver::tests::signed_sibling_peers_resolve_combined_range_once ... ok
+test core::resolver::tests::signed_frozen_policy_prunes_each_refused_release_after_context_rekey ... ok
+test core::resolver::tests::signed_portable_variants_keep_native_optional_closures_and_frozen_never_resolves ... ok
+test core::sandbox::tests::sandbox_protects_project_controls_under_broader_write_grant ... ok
+test core::sandbox::tests::sandbox_reads_global_tool_under_custom_store_in_real_home ... ok
+test core::sandbox::tests::sandbox_allows_staged_global_script_output_but_not_trust_edits ... ok
+test core::sandbox::tests::sandbox_blocks_home_secrets_and_network_for_real ... ok
+test core::sandbox::tests::sandbox_blocks_custom_store_and_project_controls ... ok
+test core::sandbox::tests::sandbox_denies_host_unix_socket_in_both_network_modes ... ok
+test core::resolver::tests::peerful_diamond_reuses_shared_contexts ... ok
+test core::linker::tests::timed_out_required_script_preserves_previous_installation ... ok
+test core::tree::tests::streams_large_file_with_canonical_digest_and_detects_tail_tampering ... ok
+
+test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.72s
+
+     Running unittests src/main.rs (/home/rivet/target/debug/deps/rivet-6f0a5b4b7bbc6a10)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rivet
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+==> [build] build registry and CLI
+go: downloading golang.org/x/sync v0.22.0
+go: downloading github.com/in-toto/attestation v1.2.0
+go: downloading github.com/sigstore/sigstore-go v1.3.0
+go: downloading github.com/Masterminds/semver/v3 v3.5.0
+go: downloading github.com/google/uuid v1.6.0
+go: downloading github.com/jackc/pgx/v5 v5.10.0
+go: downloading google.golang.org/protobuf v1.36.11
+go: downloading github.com/sigstore/protobuf-specs v0.5.1
+go: downloading golang.org/x/mod v0.38.0
+go: downloading github.com/go-openapi/swag/conv v0.27.3
+go: downloading github.com/go-openapi/runtime v0.33.0
+go: downloading github.com/sigstore/rekor-tiles/v2 v2.3.0
+go: downloading github.com/go-openapi/strfmt v0.27.0
+go: downloading github.com/secure-systems-lab/go-securesystemslib v0.11.0
+go: downloading github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
+go: downloading github.com/go-openapi/swag v0.26.1
+go: downloading github.com/sigstore/rekor v1.5.3
+go: downloading github.com/sigstore/sigstore v1.10.8
+go: downloading github.com/sigstore/timestamp-authority/v2 v2.1.3
+go: downloading github.com/google/certificate-transparency-go v1.3.3
+go: downloading golang.org/x/crypto v0.54.0
+go: downloading github.com/go-openapi/errors v0.22.8
+go: downloading github.com/go-openapi/swag/fileutils v0.27.3
+go: downloading github.com/go-openapi/swag/jsonutils v0.27.3
+go: downloading github.com/go-openapi/swag/stringutils v0.27.3
+go: downloading github.com/go-viper/mapstructure/v2 v2.5.0
+go: downloading github.com/oklog/ulid/v2 v2.1.1
+go: downloading golang.org/x/net v0.57.0
+go: downloading golang.org/x/text v0.40.0
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa
+go: downloading github.com/theupdateframework/go-tuf/v2 v2.4.2
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+go: downloading google.golang.org/grpc v1.82.1
+go: downloading github.com/transparency-dev/formats v0.1.1
+go: downloading github.com/transparency-dev/merkle v0.0.2
+go: downloading github.com/google/go-containerregistry v0.21.7
+go: downloading github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352
+go: downloading github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7
+go: downloading github.com/pkg/errors v0.9.1
+go: downloading github.com/jackc/pgpassfile v1.0.0
+go: downloading github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761
+go: downloading github.com/jackc/puddle/v2 v2.2.2
+go: downloading github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78
+go: downloading golang.org/x/term v0.45.0
+go: downloading github.com/go-openapi/validate v0.26.1
+go: downloading github.com/blang/semver v3.5.1+incompatible
+go: downloading github.com/in-toto/in-toto-golang v0.11.0
+go: downloading github.com/go-openapi/swag/typeutils v0.27.3
+go: downloading github.com/cenkalti/backoff/v5 v5.0.3
+go: downloading github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
+go: downloading golang.org/x/sys v0.47.0
+go: downloading github.com/go-openapi/swag/cmdutils v0.27.0
+go: downloading k8s.io/klog/v2 v2.140.0
+go: downloading github.com/go-openapi/swag/jsonname v0.26.1
+go: downloading github.com/go-openapi/swag/loading v0.27.3
+go: downloading github.com/go-openapi/swag/mangling v0.27.3
+go: downloading github.com/go-openapi/swag/netutils v0.27.0
+go: downloading github.com/go-openapi/swag/yamlutils v0.27.3
+go: downloading github.com/opencontainers/go-digest v1.0.0
+go: downloading github.com/go-openapi/runtime/server-middleware v0.30.0
+go: downloading go.opentelemetry.io/otel v1.44.0
+go: downloading go.opentelemetry.io/otel/trace v1.44.0
+go: downloading github.com/go-openapi/swag/pools v0.27.3
+go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260523011958-0a33c5d7ca68
+go: downloading github.com/go-logr/logr v1.4.4
+go: downloading github.com/shibumi/go-pathspec v1.3.0
+go: downloading github.com/go-openapi/analysis v0.25.5
+go: downloading github.com/go-openapi/loads v0.25.0
+go: downloading github.com/go-openapi/spec v0.22.9
+go: downloading go.yaml.in/yaml/v3 v3.0.4
+go: downloading github.com/go-openapi/jsonpointer v1.0.0
+go: downloading github.com/go-openapi/jsonreference v1.0.0
+go: downloading go.opentelemetry.io/otel/metric v1.44.0
+go: downloading github.com/cespare/xxhash/v2 v2.3.0
+go: downloading github.com/go-logr/stdr v1.2.2
+go: downloading go.opentelemetry.io/auto/sdk v1.2.1
+
+==> [tmp] import a global tool (prettier) and run it sandboxed
+
+==> [tmp] install a real project (137-package tree, native optional deps, peers)
+
+==> [tmp] installed packages work with plain Node resolution
+
+==> [tmp] run executables from the project through the sandbox
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] node_modules/.bin shims go through rivet
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] verify checks installed files, explicit versions and malformed state
+
+==> [tmp] frozen reinstall from rivet.lock re-verifies every package
+
+==> [tmp] benchmark rivet run against plain node on the installed tree
+{"placement": "tmp", "platform": "linux", "packages": 138, "command": "semver 1.2.3 -r ^1.0.0", "first_run_s": 0.087, "warm_median_s": 0.084, "plain_node_median_s": 0.02, "max_child_rss_mib": 11.9, "verify_phases_ms": {"fetch_ms": 6, "hash_ms": 35, "layout_ms": 2, "other_ms": 14, "total_ms": 57}}
+
+==> [tmp] tampering with an installed file is detected before running
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] native publish, audit and install (@rivet-examples/hello-cli)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [tmp] publishing a name that npm already serves needs the admin token
+
+==> [tmp] a credential-stealing package is blocked by the registry audit
+
+==> [tmp] revocation takes effect at run time
+
+==> [tmp] offline runs use unexpired cached attestations
+
+==> [tmp] a different registry key is rejected
+
+[tmp] all checks passed in /tmp/rivet-e2e.deD2CC
+
+==> [home] import a global tool (prettier) and run it sandboxed
+
+==> [home] install a real project (137-package tree, native optional deps, peers)
+
+==> [home] installed packages work with plain Node resolution
+
+==> [home] run executables from the project through the sandbox
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] node_modules/.bin shims go through rivet
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] verify checks installed files, explicit versions and malformed state
+
+==> [home] frozen reinstall from rivet.lock re-verifies every package
+
+==> [home] benchmark rivet run against plain node on the installed tree
+{"placement": "home", "platform": "linux", "packages": 138, "command": "semver 1.2.3 -r ^1.0.0", "first_run_s": 0.081, "warm_median_s": 0.08, "plain_node_median_s": 0.019, "max_child_rss_mib": 11.9, "verify_phases_ms": {"fetch_ms": 5, "hash_ms": 33, "layout_ms": 2, "other_ms": 13, "total_ms": 53}}
+
+==> [home] tampering with an installed file is detected before running
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] native publish, audit and install (@rivet-examples/hello-cli)
+rivet: warning: eslint@9.39.5 is deprecated upstream
+rivet: warning: vite@8.3.1 is marked warned by its audit (same file reads credentials or environment and uses the network)
+
+==> [home] publishing a name that npm already serves needs the admin token
+
+==> [home] a credential-stealing package is blocked by the registry audit
+
+==> [home] revocation takes effect at run time
+
+==> [home] offline runs use unexpired cached attestations
+
+==> [home] a different registry key is rejected
+
+[home] all checks passed in /home/rivet/.rivet-e2e.vShDOW
+
+All end-to-end checks passed (tmp home).
+{"placement": "tmp", "platform": "linux", "packages": 138, "command": "semver 1.2.3 -r ^1.0.0", "first_run_s": 0.087, "warm_median_s": 0.084, "plain_node_median_s": 0.02, "max_child_rss_mib": 11.9, "verify_phases_ms": {"fetch_ms": 6, "hash_ms": 35, "layout_ms": 2, "other_ms": 14, "total_ms": 57}}
+{"placement": "home", "platform": "linux", "packages": 138, "command": "semver 1.2.3 -r ^1.0.0", "first_run_s": 0.081, "warm_median_s": 0.08, "plain_node_median_s": 0.019, "max_child_rss_mib": 11.9, "verify_phases_ms": {"fetch_ms": 5, "hash_ms": 33, "layout_ms": 2, "other_ms": 13, "total_ms": 53}}

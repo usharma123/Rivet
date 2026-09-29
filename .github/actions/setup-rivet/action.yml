@@ -1,0 +1,56 @@
+name: Set up Rivet checks
+description: Shared toolchains, isolated build caches, and live sandbox prerequisites
+inputs:
+  cache-key:
+    description: Separate immutable caches by workload
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      with:
+        toolchain: stable
+        components: clippy, rustfmt
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        key: ${{ inputs.cache-key }}
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      id: go
+      with:
+        go-version-file: registry/go.mod
+        cache: false
+    - name: Locate Go caches
+      id: paths
+      shell: bash
+      run: |
+        echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+        echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.paths.outputs.modules }}
+          ${{ steps.paths.outputs.build }}
+        key: go-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('registry/go.sum') }}
+        restore-keys: |
+          go-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}-${{ steps.go.outputs.go-version }}-
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Enable and verify Linux sandbox
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bubblewrap
+        # Only this disposable hosted runner is changed.
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        bwrap --ro-bind / / --unshare-user --unshare-net true
+    - name: Verify macOS sandbox exists
+      if: runner.os == 'macOS'
+      shell: bash
+      run: command -v sandbox-exec

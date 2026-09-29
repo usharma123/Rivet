@@ -1,0 +1,1912 @@
+{
+  "date": "2026-09-29",
+  "platform": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "release": "24.6.0",
+    "logical_cpus": "14",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+  },
+  "build": {
+    "command": "cargo build --release --locked",
+    "baseline_commit": "f2c3c0d",
+    "candidate_patch": "2026-09-29-hashing.patch",
+    "candidate_patch_sha256": "27d606043c4a40c7c247dabb13595f438a6932ec2c53cd618634785875d7d121",
+    "source_sha256": {
+      "cli/src/core/tree.rs": "20276dae263255974aa2caa946eaf7a4a0e531760be255e6a0e7e474deb4a612",
+      "cli/src/core/installed.rs": "619c137525b848b645e4846ce02e503bd9eb81f38f39103a1bd286af138a4f6e"
+    },
+    "binary_sha256": {
+      "serial_baseline": "3ba129c37e43c1a224e2c4689d6155714d3860dfad0c43a1f279ef8f15aac7a9",
+      "streaming_four_dynamic": "172e1e4c67cc47a906fb8e9f20fbbea5ff17b385d3cb8e0bb6060a35dfec33b5",
+      "streaming_two_dynamic": "16b80c2ec4d2e3538d832bb3e357274183b151c72e9ebd74221125e2b3b430ed",
+      "streaming_eight_dynamic": "5f144637ab9fc4ce8b5045ce0afbbe0041180caf3929940ee9a237602c3d9fec",
+      "old_tree_helper": "075e119762fe042c330b209572946ec485aad01b66f600d82205d236803d4886",
+      "new_tree_helper": "90c2d92ff8fb5f5eefe55aa7d5a8028225e087e1bb43b811e5a76b8f6f6fdcc7"
+    },
+    "variant_installed_source_sha256": {
+      "2": "4a9edd7cabaaf9f72d378aa13f27b2e09ae8a39d4a6278bfc9fa977173ae45c4",
+      "4": "353fe6c9c83c4a304f5bd2ffdd39a0ca81626a50fba0031ac0ceee16ef13f54c",
+      "8": "619c137525b848b645e4846ce02e503bd9eb81f38f39103a1bd286af138a4f6e"
+    }
+  },
+  "workload": {
+    "setup": "tools/e2e/npm-port.sh, temp placement, fresh local registry mirroring npm; semver 1.2.3 -r ^1.0.0; pre-revocation frozen reinstall",
+    "packages_verified": 137,
+    "package_identity": {
+      "@esbuild/darwin-arm64@0.28.2": {
+        "artifact": "sha512-9f82aa90e42badac4725c82333546fc1b8a07d028828956933bc69f8ab318b2512ad17485e7b7bdd586b3c0c747d5e388607e62152a3c4c37d275b798f249593",
+        "tree_digest": "rivet-tree-v1:sha256:1b4399fac25763ee1279066d68eef553f33fd1efd2b846c3196707ea3bd43805"
+      },
+      "@eslint-community/eslint-utils@4.10.1": {
+        "artifact": "sha512-72e69d73154513cb032ba89625bb3c4a7d1abf636b8764121908559415bd01a007a87c235ac6474fc2c9e211463e1ec048157675e15d33b1ff0cf8ee96687cae",
+        "tree_digest": "rivet-tree-v1:sha256:c2f3f0633770feb719fa77dd0b0aaa661a44cba0ff4800e4c2bbb61985c5acaa"
+      },
+      "@eslint-community/regexpp@4.12.2": {
+        "artifact": "sha512-12b8924e5b79382f7fed25e445208085f4b1c684948019b7dce1fe224c1b769828aac4ac520ef2dee87e208088fd08380415abdd4da2dfd4699b271bc4cab87b",
+        "tree_digest": "rivet-tree-v1:sha256:c71cc857975e5c3731bb91221478fcc086dc652770f38ff054092b4b090882d1"
+      },
+      "@eslint/config-array@0.21.2": {
+        "artifact": "sha512-9c99762864e5adff468cb8a6808aeef95fe6ce048ad000420d046fc70e418d444bed67c7e6ea169a2cdb1fb401e8c9a730177c7080bdb9c7969deccbd556565b",
+        "tree_digest": "rivet-tree-v1:sha256:4bf978df75d2a69baae2c8ff3db61b83b8e22a792e2c4341331d20c805fa645a"
+      },
+      "@eslint/config-helpers@0.4.2": {
+        "artifact": "sha512-801af137cf203887f747b8dae4af6c97035ac9571980ae923943919b6b81cd378811f79568884ea42b53a31dcfe91ee8da32c5c0b1532e70bb914fd119c60483",
+        "tree_digest": "rivet-tree-v1:sha256:bda31486ebaf0f810678cafadda68b72a7376f64dd6755b615a7f77a0872dbe4"
+      },
+      "@eslint/core@0.17.0": {
+        "artifact": "sha512-c8bfec2eba66b43685122523d68b113f84c8d8c0f3d4075d24bfa367b292aaf06e962378c6a618e7821f74df2a0fc4e86ba8358a5a298757f140d9233b1aeba5",
+        "tree_digest": "rivet-tree-v1:sha256:e7734371bb229ebd0e34b6b4abc15d34e9f0af9012e0050901e6198cc4ddd7c2"
+      },
+      "@eslint/eslintrc@3.3.7": {
+        "artifact": "sha512-178da0f3d41de68016b69d24d279d2ae3ce200acdaef0f12553e264ad735f0b64c6916f82751d00072c26a512d0c2c6b4ee92cc7b354f6ab2678bc2939f3ea5b",
+        "tree_digest": "rivet-tree-v1:sha256:cdeaaba118edf707c5388368a789534d4e7674fd29ddbbe6acc645cf6339f16f"
+      },
+      "@eslint/js@9.39.5": {
+        "artifact": "sha512-432c10baccd087bee92170acabdf7c73c85b8524c8fdacd3b72d59e8de7776602e74a1e1cb9ef78f7caf44bb17d814a9f18a4bb680841bc13d0c97bef33521e0",
+        "tree_digest": "rivet-tree-v1:sha256:4fe2f9067370f7ee370e2ba892f20a559b98703c7920c73181a9902b3a9b7efc"
+      },
+      "@eslint/object-schema@2.1.7": {
+        "artifact": "sha512-56d00e6b299655f65c9996e9e84da6ca6a43207bf28d7b3fd762ea5988d5c3aaa3adf17e54af9fc86df7902873de79caf92539fcd7873aaad31074bcb173b738",
+        "tree_digest": "rivet-tree-v1:sha256:092dedb3bdb6d95fcba2a86897e6719170910e61f760fcc466d5e22ea9f969e4"
+      },
+      "@eslint/plugin-kit@0.4.1": {
+        "artifact": "sha512-e37feab6b0d4a24afb2c9aa8176737f91227bbfb78cdfae961da120df632860e76af02d5e939cebdd1b87d79bb224481df012b91c9894bd88486356d3921238c",
+        "tree_digest": "rivet-tree-v1:sha256:65385ff9f2665394f64606192f431dd2fb5b9b6cfbcf74f8aef28a8f522c571c"
+      },
+      "@humanfs/core@0.19.2": {
+        "artifact": "sha512-5215cd9be08531671b0a15f2c05c249a1aa3b373d10a67126bf85f0602c86fba10e4735bd704b489c5ac1ad48050d81e7c7788f9e06b03c2357f199b1ec19dbc",
+        "tree_digest": "rivet-tree-v1:sha256:81bc3823c7a53b7602a8d2cf923bca06397646902e6cd045fe8643f7a55ba5c6"
+      },
+      "@humanfs/node@0.16.8": {
+        "artifact": "sha512-804d5e40d67747efa44f3154a5d1a5a66cbc903643fcc2f21ea0f0aa3915408d0931d2350f9d6ccb51fde7c3cd5d890cdab01a73b7b9fc29c8299ac7b4f87705",
+        "tree_digest": "rivet-tree-v1:sha256:9cda0b627368700dfb30a3966750f92af349349fafa0f33de61d199ff9b9c140"
+      },
+      "@humanfs/types@0.15.0": {
+        "artifact": "sha512-659d70d1aa10930b94b82ed87feeec75e68d7ea42288b71245b7c8d3ca00c6a2eda5742bf402155fb032ec72c3ba22d801a14fbbca0160dabf4088bd5111c9dd",
+        "tree_digest": "rivet-tree-v1:sha256:b0f69f742174f0c8a05deac04b05e6807aba72dd85fb1c55e235c272e0643173"
+      },
+      "@humanwhocodes/module-importer@1.0.1": {
+        "artifact": "sha512-6f1bde57857cbf961be277054d3deb3d281904ea429237cad32e28555549c08b8354144c0d7acfc9744bf7cf22e5aa7d9bd6e7c8412359f9b95a4066b5f7cb7c",
+        "tree_digest": "rivet-tree-v1:sha256:97d0ddcfb3dd245ad6ed3fd4addd607f4db1d5b981430bc19ea6ce8911b5cc8b"
+      },
+      "@humanwhocodes/retry@0.4.3": {
+        "artifact": "sha512-6d5d13828f4ae217cf09e93e68c027f35469a452afdb248341e328499baf4c04b2c0d4e7549080ac2644d855aaa6f21ab4abbb54c44b5a547511acef5610f285",
+        "tree_digest": "rivet-tree-v1:sha256:184229787d410a5c602c1ecc276a5de4258ad49bebd24a48bd4929c3474a18e0"
+      },
+      "@oxc-project/types@0.151.0": {
+        "artifact": "sha512-275c97ac894d0d957313769d6b7d74c5e030ee71fcc820322cfb9422c8ca6ad14f99f9f96d2d685be70cf90b063ad5567799e14a96f0656c7faee7beaf967e3c",
+        "tree_digest": "rivet-tree-v1:sha256:f964fa2ca6ba05deb9bf4fa4537e2cb3fb82af9a1ba9083db678d56dad04c3ca"
+      },
+      "@rolldown/binding-darwin-arm64@1.2.11": {
+        "artifact": "sha512-8d286fa8db4feaf0c2ebf03924e0336d557e0e4807aa197f49c5422446edf93518e90633ed89d772b837b0bb450678aba347ff2dde7467009603a7fb2980f59d",
+        "tree_digest": "rivet-tree-v1:sha256:15f37525321312e382aae01d2224954685d808d8f015332b3af15a52b2d93def"
+      },
+      "@rolldown/pluginutils@1.0.1": {
+        "artifact": "sha512-da3f5b1ade4987c863faf3ed8333ed97bda3d324711c0cae9a8a3a4cd7c08ec2c1d3852da52bcf6cf703701331cfb9fef42601d1cd46c501716118368e29aa1b",
+        "tree_digest": "rivet-tree-v1:sha256:b4b97b1e508acdc81418a78ed97d01f725ae85da25c6149882c5d6931ffea244"
+      },
+      "@types/estree@1.0.9": {
+        "artifact": "sha512-1a174f832d5e978fc898fd395f4e54c38730dbf33ddc10949a712f599352b650b310a304e05924f98a680393a21cd426a12ec269f6fc5dadcfc9af26d50af37a",
+        "tree_digest": "rivet-tree-v1:sha256:a69f0ff195b59173b5099b3e9d58589da4966b657ea72185db265a44ae8d7c4e"
+      },
+      "@types/json-schema@7.0.15": {
+        "artifact": "sha512-e7e7cff0ff0c14d0be0326420f1ac1da991914f1b3a90594ce949ebae54bbe6f1531ca2b3586af06aa057312bc6d0cf842c6e7e2850411e9b8c032df732b061c",
+        "tree_digest": "rivet-tree-v1:sha256:3fc765db900a87de7b39410dd9fcff0a592ca8b372acf7e9f78135dd1886e681"
+      },
+      "acorn-jsx@5.3.2": {
+        "artifact": "sha512-aeaf6cf893617f4202863b435f196527b838d68664e52957b69d0b1f0c80e5c7a3c27eef2a62a9e293eb8ba60478fbf63d4eb9b00b1e81b5ed2229e60c50d781",
+        "tree_digest": "rivet-tree-v1:sha256:90ff06f429a6c7d3c06aa1cc1eb48a7a5baabb717b6f86f936d09af4063f9592"
+      },
+      "acorn@8.18.0": {
+        "artifact": "sha512-946abef72af5fc6b8059a558207463befc921b9ff855f288bc2f045b14ad3dd70387f29aec51b7b703fabf8779064adabd48a584802c1b8423f37b74d8b5943d",
+        "tree_digest": "rivet-tree-v1:sha256:aad5f1017a76f2e112a3caf216b1f26a8ea0bb88f3ae2258f344f0eb99c27467"
+      },
+      "ajv@6.15.0": {
+        "artifact": "sha512-7e0171ec77e8abad32b4ad9cec386717c8c8bf362038cc5fba08cb3923078cb20f81e9ea6bb4bba1a6a001352af7d995e8862f376b51982d309d3617ea23db33",
+        "tree_digest": "rivet-tree-v1:sha256:909c150a09518a626285f1045cd4f6357a35e40b8fd4c4781bf6657e08672c89"
+      },
+      "ansi-regex@3.0.1": {
+        "artifact": "sha512-f8ef4972df307fefa55f1c4573885cf0bb23692ab41c5cf32fb715b30f2944320f763283da64f8cad0d994bb92059e1c2ca6455c8acc18eec36d00ad30924c2b",
+        "tree_digest": "rivet-tree-v1:sha256:fdda78e741ba27e71a2c2808fb5420898fb8214a7ac87cb56871173dbf65e12a"
+      },
+      "ansi-regex@5.0.1": {
+        "artifact": "sha512-aae2505e54d25062f62c7f52517a3c570b18e2ca1a9e1828e8b3529bce04d4b05c13cb373b4c29762473c91f73fd9649325316bf7eea38e6fda5d26531410a15",
+        "tree_digest": "rivet-tree-v1:sha256:606ae07aef551d74634ab8776e36ea2518bb1f0ff44776b7c1e7505803c8aa14"
+      },
+      "ansi-styles@4.3.0": {
+        "artifact": "sha512-cdb07dac22404f5adb8e25436f686a2851cd60bc60b64f0d511c59dc86700f717a36dc5b5d94029e74a2d4b931f880e885d3e5169db6db05402c885e64941212",
+        "tree_digest": "rivet-tree-v1:sha256:18cc8e23c8c8ec8a5df5fe1945e06c33517e0bfb9cc9fc3eee58db10cc160771"
+      },
+      "argparse@2.0.1": {
+        "artifact": "sha512-f3ef56a9e6db173a57f4e47e59ae8edbd6ac22881e44ccdc1ad00835da4c1c7c80835d1fd3969215505b704a867ff3d7c35123019faadbf6c4060dc3beeacadd",
+        "tree_digest": "rivet-tree-v1:sha256:373dd5ca885cfb2f8b53189dbe91e649d34fd1d08a2ad6b2d8cd1c932d214e77"
+      },
+      "balanced-match@1.0.2": {
+        "artifact": "sha512-de849e50ed13315ebb84dd4099b5ec2b8c9aa94eed8e21e56f144364ea47d0a5bdf82797e1b440697d009f1b74b71d8cae94695b041a3f02252121098585393f",
+        "tree_digest": "rivet-tree-v1:sha256:cb9c13ccf12230ec79c806f673043b35794e5861005c05989c8e28f4e6014f36"
+      },
+      "brace-expansion@1.1.21": {
+        "artifact": "sha512-f73780f8a2d934dce0945d933ca450103cb1e986f2edd68092ecbc3223f3a573ec6035a2fc344cf239b0503c689108d8a81a6fe4380f8b00f88786594b2d548f",
+        "tree_digest": "rivet-tree-v1:sha256:f33af4406201d0cd4d971fa6aee5c88178bda9ad7debf49dbac5ebeb0e5b7190"
+      },
+      "callsites@3.1.0": {
+        "artifact": "sha512-3fc06302c5ef652f95203508d7584709012fef8613ebb6148b924914d588a8bdb7e6c0668d7e3eab1f4cbaf96ce62bf234435cb71e3ac502d0dda4ee13bb2c69",
+        "tree_digest": "rivet-tree-v1:sha256:e2e843976bd73d9ae9ba793eb818d18b2a510b25c04db36ee41c037a5fbe8ced"
+      },
+      "camelcase@5.3.1": {
+        "artifact": "sha512-2f6f124c1d7bd27c164badd48ed944384ddd95d400a5a257664388d6e3057f37f7ad1b8f7a01da1deb3279ef98c50f96e92bd10d057a52b74e751891d79df026",
+        "tree_digest": "rivet-tree-v1:sha256:86c8cfe66c27e5fada708db01c6fe0a94826e8aa76ce3c372cb383defcdb767c"
+      },
+      "chalk@4.1.2": {
+        "artifact": "sha512-a0a9db845c91217a54b9ecfc881326c846b89db8f820e432ba173fc32f6463bfd654f73020ef5503aebc3eef1190eefed06efa48b44e7b2c3d0a9434eb58b898",
+        "tree_digest": "rivet-tree-v1:sha256:b3e92d904fe82137142b946f0e2ab5fa8c6137ee5851376f7200436274d221d1"
+      },
+      "cliui@6.0.0": {
+        "artifact": "sha512-b7ac1b82da025ef033b2ded0817c4962a3edd2eb047db81075fb443db2cbfdcbefe873c4e5582fa82b80203474360539d9db3aac5c2aae06a434bac712309bad",
+        "tree_digest": "rivet-tree-v1:sha256:8dc39589181abc93cf394cadf8c788b891cb32f8ef732b2bc9370b5c26d03f8e"
+      },
+      "color-convert@2.0.1": {
+        "artifact": "sha512-4511023ec8fb8aeff16f9a0a61cb051d2a6914d9ec8ffe763954d129be333f9a275f0545df3566993a0d70e7c60be0910e97cafd4e7ce1f320dfc64709a12529",
+        "tree_digest": "rivet-tree-v1:sha256:97866ff4e7c4df1d099ab2f6ae7b4ee1336ed6fa9e737535e2a25e29dbbc9963"
+      },
+      "color-name@1.1.4": {
+        "artifact": "sha512-74ecbedc0b96ddadb035b64722e319a537208c6b8b53fb812ffb9b71917d3976c3a3c7dfe0ef32569e417f479f4bcb84a18a39ab8171edd63d3a04065e002c40",
+        "tree_digest": "rivet-tree-v1:sha256:c7d306ac185ea90a9e344df9f93861abaa3bae42c0deba0880c9161561ecf701"
+      },
+      "concat-map@0.0.1": {
+        "artifact": "sha512-fd2aefe1db30c903417e8846a73f68e986f71b3dd2ad40ea047e6b4ee84647b6a1b656d82a7571c366c214c4658da03b1171da5d9f30b07768745bdb9212a6aa",
+        "tree_digest": "rivet-tree-v1:sha256:c5d723cf85e7b015f33dc938c564af4c26950e3de62a94eea4fca8e2f144fe4b"
+      },
+      "cowsay@1.6.0": {
+        "artifact": "sha512-f02e07d6376b80dbac4d0af762ee120a6f992ac0250c56e96b4292d19de29bcb9e6a0fbda4639fdc2ae2a2bbaf99e696fc0e68aa0f4bd1aafaa9e7ed021d378f",
+        "tree_digest": "rivet-tree-v1:sha256:0c0a410e7c1802f8bc8063c90f56b84df43734490e975cc020c472f231832c80"
+      },
+      "cross-spawn@7.0.6": {
+        "artifact": "sha512-b95d903963f69d6ceccb668ca7c69189b862f5d9731791e0879487681f4e893184c834e2249cb1d2ecb9d505ddc966ed00736e6b85c9cd429c6b73b3294777bc",
+        "tree_digest": "rivet-tree-v1:sha256:085ac338db2de493772ac3d98156966253bde290eebebab388e7b9e65f846839"
+      },
+      "debug@4.4.3": {
+        "artifact": "sha512-446c305a7c10be455f6af295b76d8518bc3ec5849dcc04709b4aeee83853540dee994e6165cdbc57790ee2cb6062bcab4e52e9baf808f468a28e5b408cd6dca8",
+        "tree_digest": "rivet-tree-v1:sha256:db7301c4c73c59d990040b64a84e92e8eeaf8c559563a406de0a33760a8e6934"
+      },
+      "decamelize@1.2.0": {
+        "artifact": "sha512-cf64be5bd5fbde10145248be37ef596b694196e9fcf738a03b21abb1ac7e29443ac0a5b86685a91180641a1423c008e30c2916c6163454a12193cc3363b17970",
+        "tree_digest": "rivet-tree-v1:sha256:aa200b33e29e30e94504e1df1ab8b25d4aef0edc5ef39b1b65a8a688c63a0ee9"
+      },
+      "deep-is@0.1.4": {
+        "artifact": "sha512-a083f392c993838fccae289a6063bea245c34fbced9ffc37129b6fffe81221d31d2ac268d2ee027d834524fcbee1228cb82a86c36c319c0f9444c837b7c6bf6d",
+        "tree_digest": "rivet-tree-v1:sha256:6d66752a1c6733d7cdc715993606c57cfe512bc533144829fe932cec53a1ae3d"
+      },
+      "detect-libc@2.1.2": {
+        "artifact": "sha512-06d8f604e38ef37a375b21f9f5ef0c817b3111055c6ab9143a9118aee6c1d2eaf09cdd74c90dfae2bb22072535d67665a966199b4e62fe87fb8a8e26ce2841b5",
+        "tree_digest": "rivet-tree-v1:sha256:90a8486389c09f9c8644eaf4840f5162c870a95053f9662f773a27b24f217ea9"
+      },
+      "emoji-regex@8.0.0": {
+        "artifact": "sha512-3128d8cdc58d380d1ec001e9cf4331a5816fc20eb28f2d4d1b7c6d7a8ab3eb8e150a8fd13e09ebd7f186b7e89cde2253cd0f04bb74dd335e126b09d5526184e8",
+        "tree_digest": "rivet-tree-v1:sha256:86acca018362815148f25a9478aca43a41b5a9ccd9d9236bee7ebbe0eb65fae8"
+      },
+      "esbuild@0.28.2": {
+        "artifact": "sha512-1ca54b4bc76f208fb1a0a5bd926ab16d12ab9d61177c926bfc56618499a2a880747b4e7740d605a8e068b9330efe4e6c203e0cbc28940afbfc6fd338877db020",
+        "tree_digest": "rivet-tree-v1:sha256:2a21f1ac1e9cc5601c783f55f17553b324d3e7a1449893d6175d932ed83a7366"
+      },
+      "escape-string-regexp@4.0.0": {
+        "artifact": "sha512-4eda5c349dd7033c771aaf2c591cc96956a346cd2e57103660091d6f58e6d9890fcf81ba7a05050320379f9bed10865e7cf93959ae145db2ae4b97ca90959d80",
+        "tree_digest": "rivet-tree-v1:sha256:0e21ce49359b5d5a7e3e393f9e1fc7c295c7f9006c6d638ae2ba6dd6c9857b16"
+      },
+      "eslint-scope@8.4.0": {
+        "artifact": "sha512-b0d5ce7ca0a7ef8aedf1120228cbc94bb5ca57f5e4f6403b0f226bf262629374bb0b0832dea964926c92dae401de388983a54d75977fa43049bb49ef1b63654e",
+        "tree_digest": "rivet-tree-v1:sha256:b68c03aeac063fe19b5eaf14ce68649bb16cf33e5823785a8c3aed70651abab7"
+      },
+      "eslint-visitor-keys@3.4.3": {
+        "artifact": "sha512-c2973e2d77a2ca28acc4f944914cd4eacbf24b57eb20edcc8318f57ddcbb3e6f1883382e6b1d8ddc56bf0ff6a0d56a9b3a9add23eb98eb031497cfdad86fa26a",
+        "tree_digest": "rivet-tree-v1:sha256:1d5690fe97f21329062b56f4c2dfc1cb0d15acb18123e3122a4bcc0f23dcb2b5"
+      },
+      "eslint-visitor-keys@4.2.1": {
+        "artifact": "sha512-521764e6c7ea71e7bff47feb08e262918cfaee8d1ad93c3684644f386d98d51d9d83b6eb45ed6e1b4c9a3500c7bbe4cefee40f17fe5e09aa6f612987523b7b25",
+        "tree_digest": "rivet-tree-v1:sha256:c575461ef8e673450758e377d909fecfc77385567241dfe1ca06f6e0f203e57a"
+      },
+      "eslint@9.39.5": {
+        "artifact": "sha512-0e0652eb668f2d72a59f120b4bf0180a846f1da65e5dc788ce55cf924186cc9592a30d5a124d256d39715129728c2f2371a2b101d3a74c3cfea35245481b328f",
+        "tree_digest": "rivet-tree-v1:sha256:76cb7847063603cbf31f4b0814d93aa5e68ba309fd54c14f9e84f84f59e48eb3"
+      },
+      "espree@10.4.0": {
+        "artifact": "sha512-8fa3c0436b94afbf4f6610633f90b97e197c7b7f459919ce8ec0f99469d6ac553c8b61bbefab412bbfa73fc2ae4144d3c80654c1f42a5c082b547e4c6c7f4261",
+        "tree_digest": "rivet-tree-v1:sha256:af6327ad55197ef25d81bb29f93e58827b638ed33f201ed538deea0676434cf1"
+      },
+      "esquery@1.7.0": {
+        "artifact": "sha512-029e86d16430714fcb1ecbcbc0e3757c0417f59a7403663a63f709065f6bfc96d6f74672838ff36c6eb3cca6b639300b10b6ab60798abb41a1a4ce443beed3d2",
+        "tree_digest": "rivet-tree-v1:sha256:3ffd6609103f59f7dcffd84955d137a62e8a5491492f10d5dab91fdc2a647a4e"
+      },
+      "esrecurse@4.3.0": {
+        "artifact": "sha512-2a67ca2f76fa1be457bcff0dd6faf74ead642ffa021609f63585c4b6a3fcfcbde929aa540381bc70555aa05dd2537db7083e17ca947f7df8a81e692d8bafd36a",
+        "tree_digest": "rivet-tree-v1:sha256:fd914b4b0cbb59f6dde9b06697bebe734327d094ffc09589d8100bd3697f918b"
+      },
+      "estraverse@5.3.0": {
+        "artifact": "sha512-30c74046e54443388d4de243f0380caa6870475d41450fdc04ffa92ed61d4939dfdcc20ef1f15e8883446d7dfa65d3657d4ffb03d7f7814c38f41de842cbf004",
+        "tree_digest": "rivet-tree-v1:sha256:f112e49793f4e58279d3e405b4ec7d6d7010e23cc16178db43468085cda406cb"
+      },
+      "esutils@2.0.3": {
+        "artifact": "sha512-915b1ca97938382a7af126747648042958baffc8a3df4d0a0564c9ab7d8ffdd61e5934b02b8d56c93c5a94dd5e46603967d514fcb5fd0fb1564a657d480631ea",
+        "tree_digest": "rivet-tree-v1:sha256:92943c3ff52a715b0af553189a73c51eabab1aaad4a2f3facdf8a441b2e9d8d2"
+      },
+      "fast-deep-equal@3.1.3": {
+        "artifact": "sha512-7f7a90f68432f63d808417bf1fd542f75c0b98a042094fe00ce9ca340606e61b303bb04b2a3d3d1dce4760dcfd70623efb19690c22200da8ad56cd3701347ce1",
+        "tree_digest": "rivet-tree-v1:sha256:7374b08bea30373fd74b4084b3bc582cc51e1940f208f8354e05e4ee8a639319"
+      },
+      "fast-json-stable-stringify@2.1.0": {
+        "artifact": "sha512-96177fc05f8b93df076684c2b6556b687b5f8795d88a32236a55dc93bb1a52db9a9d20f22ccc671e149710326a1f10fb9ac47c0f4b829aa964c23095f31bf01f",
+        "tree_digest": "rivet-tree-v1:sha256:ab9a7baa1a39ac8477eec999d92048d663ea0d5af054b09ec6bf60ce7f93b856"
+      },
+      "fast-levenshtein@2.0.6": {
+        "artifact": "sha512-0c25eee887e1a9c92ced364a6371f1a77cbaaa9858e522599ab58c0eb29c11148e5d641d32153d220fcf62bcf2c3fba5f63388ca1d0de0cd2d6c2e61a1d83c77",
+        "tree_digest": "rivet-tree-v1:sha256:eb282c91c9ba4bd00e35d94b6231fbaae722b0e1ff56dec240720f825fa6cf38"
+      },
+      "fdir@6.5.0": {
+        "artifact": "sha512-b486d8b596ee70eb340511aa3c992c84951874bf920c7edd54cf208f2f84469dd60148cb105244fb4da46a7c87b708d63a7c2b298062c0098cd29e242c90275e",
+        "tree_digest": "rivet-tree-v1:sha256:cc0ea1a78e17eb40f538afdd8fa07f2958b6a5957188bc81865b3c2011ed37c9"
+      },
+      "file-entry-cache@8.0.0": {
+        "artifact": "sha512-5d74d4c02be2b1ae6869c34644ff527cdb5804d00c8be44fc011666e564417b37bb301d8412ebf65f93b491c31e03e63dc21f6d7560d45ca350c430d55f6429d",
+        "tree_digest": "rivet-tree-v1:sha256:58a05f70c3ea58e8595fb3c702a4d3e4ae160430ddde325159b91e376be58d13"
+      },
+      "find-up@4.1.0": {
+        "artifact": "sha512-3e93b001d43f6255d0daf8fc6b787c222a43b98462df071e550406616c4d20d71cab8d009f0ec196c11708c6edd59b7e38b03a16af6cb88a48583d0eb2721297",
+        "tree_digest": "rivet-tree-v1:sha256:3a0c3c63912780e5b64c52621297e2a95d491779c3d62a71ae436a20402d3759"
+      },
+      "find-up@5.0.0": {
+        "artifact": "sha512-efcfcf5d3d7094b2c3813cc3b3bb23abd873cf4bd70fece7fbbc32a447b87d74310a6766a9f1ac10f4319a2092408dda8c557dd5b552b2f36dac94625ba9c69e",
+        "tree_digest": "rivet-tree-v1:sha256:123e2e54a589195a5c584a136d81b4f0fb1d7340dae7490cae68e0a4cc8acd40"
+      },
+      "flat-cache@4.0.1": {
+        "artifact": "sha512-7fb71c14f2b7497147a71d795081b2449fc525072db8a674cd5b8dddfac1a381e72b771acbd5445b447ac8f6051c2d0082a86e90fcca8eadb6b790e6032a86cb",
+        "tree_digest": "rivet-tree-v1:sha256:a3c124a4fdb2c936904cb55cd5a722f327dbcaba59da160cc01c172fd243f2cf"
+      },
+      "flatted@3.4.4": {
+        "artifact": "sha512-e7ec9b841640344271687dd7e5ebc015ab54c4b7c41d2afb9fa91827ed50774994aabe1ebbd8087fa1836d61dff112628c7ae38cef06fa56b5e1294bd92792d5",
+        "tree_digest": "rivet-tree-v1:sha256:63358760892c4c4047a16abc58b4c035622a8c35bd0c4e12389535e85bd082e0"
+      },
+      "fsevents@2.3.3": {
+        "artifact": "sha512-e71a037d7f9f2fb7da0139da82658fa5b16dc21fd1efb5a630caaa1c64bae42defbc1d181eb805f81d58999df8e35b4c8f99fade4d36d765cda09c339617df43",
+        "tree_digest": "rivet-tree-v1:sha256:52a17908e29e5fed237e81b9e71736f404693bfa8a5135e6a81c63e9a3805335"
+      },
+      "get-caller-file@2.0.5": {
+        "artifact": "sha512-0f214fdc133fdd81d340e0942ffc343991d1d25a4a786af1a2d70759ca8d11d9e5b6a1705d57e110143de1e228df801f429a34ac6922e1cc8889fb58d3a87616",
+        "tree_digest": "rivet-tree-v1:sha256:1d162e3386f08ce9497fa004412cc888e43e1e0889dee9fc13224dbadb1e7247"
+      },
+      "get-stdin@8.0.0": {
+        "artifact": "sha512-b18db6680eb1721033a6b8f2aa648442fe146c003344dd0bd9d401d0d94de5a7134caf43a27ea78687377806d49e966208034031f77ffb8d2455d29f17282886",
+        "tree_digest": "rivet-tree-v1:sha256:42d9a14173c55023fcfb15bf8cfe30a37220f0152ba3cd04479efcee34a7594b"
+      },
+      "glob-parent@6.0.2": {
+        "artifact": "sha512-5f1c08f043a1550816a7a8832feddbd2bf3a7f877a017eb3494e791df078c9d084b972d773915c61e3aefa79c67ed4b84c48eeff5d6bb782893d33206df9afe0",
+        "tree_digest": "rivet-tree-v1:sha256:fd1c46c282c0be730b669df6208b4dd03dfa599df4d7ce6088992567fe92707b"
+      },
+      "globals@14.0.0": {
+        "artifact": "sha512-a1a846bee3064253f0fe2bc86018d54ab5807d62c17a4bb9b693c4d9f38f2e2f961df7c859bba1dad0a38724214c13cc7f913d8c3107e053a64d8818c1b2b0b5",
+        "tree_digest": "rivet-tree-v1:sha256:0b521a530473b4a6cb180c76f6fcb19b2b995e9dc5e3cd684866f11910960718"
+      },
+      "has-flag@4.0.0": {
+        "artifact": "sha512-1329094ff4352a34d672da698080207d23b4b4a56e6548e180caf5ee4a93ba6325e807efdc421295e53ba99533a170c54c01d30c2e0d3a81bf67153712f94c3d",
+        "tree_digest": "rivet-tree-v1:sha256:869c356bbead3221d11d241c8dc1971c002e5253425a7207bf9fa019c2bbf5a6"
+      },
+      "ignore@5.3.2": {
+        "artifact": "sha512-86c053354a904c3c245ad71d608da2d3a63f9d4044b0d10324a8d676280bbde832f240ee2404bcb91969924710a721172f467fa630f2e4706632344227682afa",
+        "tree_digest": "rivet-tree-v1:sha256:35bb1383aabf7d9b23f5fbb1372a4c46d11b5ae080315f03328983a458ea2528"
+      },
+      "import-fresh@3.3.1": {
+        "artifact": "sha512-4d1dca7eb4d94d82cf07a8d48dfc7a305f56716ac72fdb2ee5339b2b866462005d58a3ce1684a8408744b93b91f36a66b711f6b29586f61e9eb707ebd692c1a9",
+        "tree_digest": "rivet-tree-v1:sha256:bd422fa07cc3fc8f0b678adc72d893ff98682071083697863f03c4247fd74b6c"
+      },
+      "imurmurhash@0.1.4": {
+        "artifact": "sha512-2665cc67ac2ebc398b88712697dca4cea3ba97015ba1fd061b822470668435d0910c398c5679f2eece47b0880709b6aad30d8cc8f843aa48535204b62d4d8f1c",
+        "tree_digest": "rivet-tree-v1:sha256:d045fc97721e8e72c0dfe5262927cca37a4dc6d2ed7f68121c064ba6e62500fd"
+      },
+      "is-extglob@2.1.1": {
+        "artifact": "sha512-49b29b00d90deb4dd58b88c466fe3d2de549327e321b0b1bcd9c28ac4a32122badb0dde725875b3b7eb37e1189e90103a4e6481640ed9eae494719af9778eca1",
+        "tree_digest": "rivet-tree-v1:sha256:03bfc6aa032cd74f440b799eb36408ee430948f6b9d3ed2fab3ca2b866cbd43d"
+      },
+      "is-fullwidth-code-point@2.0.0": {
+        "artifact": "sha512-547b2400a60cf117d2157c1e7b9b7971b3793d97aad56ae1eaa7796e4ca25c87fa51070deb0fc0d1e5ccf6beadf1df8660e87ea3a6618849dbf3c2cdfd8f26db",
+        "tree_digest": "rivet-tree-v1:sha256:53fe1766f4401bdcf49c4cf3d930a21b6222165bde65b888029fd65097bdad36"
+      },
+      "is-fullwidth-code-point@3.0.0": {
+        "artifact": "sha512-cf29a6e7ebbeb02b125b20fda8d69e8d5dc316f84229c94a762cd868952e1c0f3744b8dbee74ae1a775d0871afd2193e298ec130096c59e2b851e83a115e9742",
+        "tree_digest": "rivet-tree-v1:sha256:47abc640ba33d5cf410d5e196a57ecd4a55740e1974d1cbf12eafef4a57de058"
+      },
+      "is-glob@4.0.3": {
+        "artifact": "sha512-c5e9526b21c7dfa66013b6568658bba56df884d6cd97c3a3bf92959a4243e2105d0f7b61f137e4f6f61ab0b33e99758e6611648197f184b4a7af046be1e9524a",
+        "tree_digest": "rivet-tree-v1:sha256:abd4b425195068d387954f6810f7f1ba897102ef2e97c49a698425e99dedbe58"
+      },
+      "isexe@2.0.0": {
+        "artifact": "sha512-447c4c2e9f659ca1c61d19e0f5016144231b600715a67ebdb2648672addfdfac638155564e18f8aaa2db4cb96aed2b23f01f9f210d44b8210623694ab3241e23",
+        "tree_digest": "rivet-tree-v1:sha256:7217550052ee9fb987c5eb6fb9ea736877a990bc038514eff282077eaa2c2ca4"
+      },
+      "js-yaml@4.3.2": {
+        "artifact": "sha512-48534ebd227e0e07fff409fdd38631f828129483c2908a5aa38aa8e7596979edb94c845e8dd1f7ae1478119306a0dc77fd33f73bec335ae893165e2ca9b96dcc",
+        "tree_digest": "rivet-tree-v1:sha256:fae9577187a622c22c74c85468b31610190031d8061c3f7ab483a9f9f798c9d4"
+      },
+      "json-buffer@3.0.1": {
+        "artifact": "sha512-e1b57905f4769aa7d04c99be579b4f3dd7fe669ba1888bd3b8007983c91cad7399a534ff430c15456072c17d68cebea512e3dd6c7c70689966f46ea6236b1f49",
+        "tree_digest": "rivet-tree-v1:sha256:931f54fa8fe5f0435757206b99510840d6111e6781a94aec6dbbe6420b9dfec7"
+      },
+      "json-schema-traverse@0.4.1": {
+        "artifact": "sha512-c5b6c21f9742614e53f0b704861ba1ec727cf075ee5b7aac237634cce64529f6441dca5688753f271ce4eb6f41aec69bfe63221d0b62f7030ffbce3944f7b756",
+        "tree_digest": "rivet-tree-v1:sha256:432267aafc9e692830e298f491e6343f975de5aa28bdd733e9a5c1bc508e4156"
+      },
+      "json-stable-stringify-without-jsonify@1.0.1": {
+        "artifact": "sha512-05d6e8cbe97bb40dce196e858f21475a43f92ee0728f54e4df72e3caad1ac72cdd93dfff2528b6bb77cfd504a677528dc2ae9538a606940bbcec28ac562afa3f",
+        "tree_digest": "rivet-tree-v1:sha256:d5e481c0a66e6727dc277dbad54dad27d73d6c2af1ab748d0ca2f570f6ad8342"
+      },
+      "keyv@4.5.4": {
+        "artifact": "sha512-a3154790747f1097f608d5e75b144b5ba9a0ec9c82094706d03b441a62f672d528d4f3538a7d4f52297eafffb8af93295600bf7e7d648ecc7b9a34ae8caa88a7",
+        "tree_digest": "rivet-tree-v1:sha256:863f09222f0ace46caba5d7b3d6f2f7309387c7dbe15292fa2fd53186cb2e2d1"
+      },
+      "levn@0.4.1": {
+        "artifact": "sha512-f9b4f6b87e04e4b184ee1fe7ddebdc4bfb109495c2a48a7aca6f0e589e5e57afbaec3b2a97f2da693eea24102ddabcdfa1aff94011818710e2c7574cb7691029",
+        "tree_digest": "rivet-tree-v1:sha256:b45b285c65971b77fbe9682ccbea185e48cc8d7f921ffdee7e5668521db1b33c"
+      },
+      "lightningcss-darwin-arm64@1.33.0": {
+        "artifact": "sha512-49c89acfc79e9cd4ca9fd6f7b7bfb1af48a94e9f58c4a418e27a704379ab46e2f404054704bc99c687e168a04056dce6b5167fcd3ca8d3fb68e01d6e586fc38e",
+        "tree_digest": "rivet-tree-v1:sha256:368186c4e83566af14fdac42087dabd27900c30eeb4980c87f2b386a5f8d8ea1"
+      },
+      "lightningcss@1.33.0": {
+        "artifact": "sha512-5a4503ae88ee26cd3192019fdae756c5adf21814713edc54901efd8ba68264b46073b3ccf1f65ef53a2c7cf0dcbc4a5065bb850129c762644b04b51b98b38820",
+        "tree_digest": "rivet-tree-v1:sha256:50b116d367f201d7b4510b550fceb993d6c86e75b25ece3a878345508ffe0eb1"
+      },
+      "locate-path@5.0.0": {
+        "artifact": "sha512-b7b870f6923e5afbb03495f0939cd51e9ca122ace0daa4e592524e7f4995c4649b7b7169d9589e65c76e3588da2c3a32ea9f6e1a94041961bced6a4c2a536af2",
+        "tree_digest": "rivet-tree-v1:sha256:1c26deced4b04e8e08be0c2d3c87d966485a3cdc63067a2ad1b9f07db4299b42"
+      },
+      "locate-path@6.0.0": {
+        "artifact": "sha512-88f64ae9e6236f146edee078fd667712c10830914ca80a28a65dd1fb3baad148dc026fcc3ba282c1e0e03df3f77a54f3b6828fdcab67547c539f63470520d553",
+        "tree_digest": "rivet-tree-v1:sha256:b0d68192dc991122f6cd18f0735facf31fcf7d936c78c58169a052daf445338a"
+      },
+      "lodash.merge@4.6.2": {
+        "artifact": "sha512-d0aa63a97455beb6320ac5f5b3047f5d32b4bdae9542440ce8c368ecfa96efb0728c086801103c11facfd4de3e2a52a3f184b46540ad453fd852e872603ba321",
+        "tree_digest": "rivet-tree-v1:sha256:34898a67217e0c58bc2f5214eee9c538b0db7adcb546322298882d0e1d9fe436"
+      },
+      "minimatch@3.1.5": {
+        "artifact": "sha512-5608d652c9e74fa9fe35493a799abbef37857695b62d60f33facc51ab09b1d789836e9790f3aa4d871d0e6e147d83356e576e9f3e8d5cda78db7de2cb04125e3",
+        "tree_digest": "rivet-tree-v1:sha256:dd55280127baa29db94c9bb6fc23890da4d493cd6958d40c65faf949a93c1cdb"
+      },
+      "ms@2.1.3": {
+        "artifact": "sha512-e85973b9b4cb646dc9d9afcd542025784863ceae68c601f268253dc985ef70bb2fa1568726afece715c8ebf5d73fab73ed1f7100eb479d23bfb57b45dd645394",
+        "tree_digest": "rivet-tree-v1:sha256:2be20d63d4b199a857818a362fc5cc51175307fbed0ca60da114b62341b23c72"
+      },
+      "nanoid@3.3.19": {
+        "artifact": "sha512-636b54372e28bb0eadab9a0348a7906063b286450184d39c195ff4d8a0beea477d7831aa75977efa68cc8880e296b058be3127098bd5b6cb870ae3fea2449fba",
+        "tree_digest": "rivet-tree-v1:sha256:e9f0c96f20309aca2e9e6906ad510486517c590c4f97ea2f4542fd85f720d297"
+      },
+      "natural-compare@1.4.0": {
+        "artifact": "sha512-396343f1e8b756d342f61ed5eb4a9f7f7495a1b1ebf7de824f0831b9b832418129836f7487d2746eec8408d3497b19059b9b0e6a38791b5d7a45803573c64c4b",
+        "tree_digest": "rivet-tree-v1:sha256:d1a00797667c7b0d70509d35d2b1796376aa709b9bdaadd1393f576a6f17aae7"
+      },
+      "optionator@0.9.4": {
+        "artifact": "sha512-e88a50ee6294c5171934b20e6d1d21cfb971b1aa5248860d649c173c6785d264d5a862852178f50d070ca13db64b744e70bc98febcf43d669667d6b25a669df6",
+        "tree_digest": "rivet-tree-v1:sha256:00cf819492fead6f90d797fc50e23800e289c92c7ced8fa693a0374d0a30ff8a"
+      },
+      "p-limit@2.3.0": {
+        "artifact": "sha512-ffff3c985592271f25c42cf07400014c92f6332581d76f9e218ecc0cbd92a8b98091e294f6ac51bd6b92c938e6dc5526a4110cb857dc90022a11a546503c5beb",
+        "tree_digest": "rivet-tree-v1:sha256:bbcc392a6ceaf41ce69ab9954231018cf866e271bd17e4049fb74912b6005a8e"
+      },
+      "p-limit@3.1.0": {
+        "artifact": "sha512-4d839a9ccdf01b0346b193767154d83c0af0e39e319d78f9aa6585d5b12801ce3e714fe897b19587ba1d7af8e9d4534776e1dcdca64c70576ec54e5773ab8945",
+        "tree_digest": "rivet-tree-v1:sha256:b0690f313fdd5eb13ce1f5895936acd483d459cb5c39abc3ce3d9591ddc71bae"
+      },
+      "p-locate@4.1.0": {
+        "artifact": "sha512-47bf5967fd30031286bb7a18325cfc8f2fe46e1b0dad2ed2299ecfc441c1809e7e1769ad156d9f2b670eb4187570762442c6f3155ec8f84a1129ee98b74a0aec",
+        "tree_digest": "rivet-tree-v1:sha256:24b011bf3a4697f3269a3e02616324ef7c26bdb9a84eaae2b03a38642513d65a"
+      },
+      "p-locate@5.0.0": {
+        "artifact": "sha512-2da363b51594058fbecc1e6713f37071aa0cca548f93e4be647341d53cdd6cc24c9f2e9dca7a401aded7fed97f418ab74c8784ea7c47a696e8d8b1b29ab1b93f",
+        "tree_digest": "rivet-tree-v1:sha256:d05324444c1357da8e6d4f6a81e5a245b7dd12fa5394932e017302c3f63399ff"
+      },
+      "p-try@2.2.0": {
+        "artifact": "sha512-4789cf0154c053407d0f7e7f1a4dee25fffb5d86d0732a2148a76f03121148d821165e1eef5855a069c1350cfd716697c4ed88d742930bede331dbefa0ac3a75",
+        "tree_digest": "rivet-tree-v1:sha256:95521a540ee9e90735a93bdbf88c61ea7b3836509cee35ee50271b09958645dc"
+      },
+      "parent-module@1.0.1": {
+        "artifact": "sha512-190d84591a5057cfe8f80c3c62ab5f6593df3515996246e2744f64e6ba65fe10b7bed1c705f1a6d887e2eaa595f9ca031a4ad42990311372e8b7991cb11961fa",
+        "tree_digest": "rivet-tree-v1:sha256:f75b1e0b41ca5f3dda113808c4431692c98665513b32499a46292be9d667e1c1"
+      },
+      "path-exists@4.0.0": {
+        "artifact": "sha512-6a4f50cb943b8d86f65b071ecb9169be0d8aa0073f64884b48b392066466ca03ec1b091556dd1f65ad2aaed333fa6ead2530077d943c167981e0c1b82d6cbbff",
+        "tree_digest": "rivet-tree-v1:sha256:28b502e248659c02b6c9a9f07d86aa6ca75ec5b32fb6e141c44e24e241a0ac7b"
+      },
+      "path-key@3.1.1": {
+        "artifact": "sha512-a2399e374a9dfb2d23b3312da18e3caf43deab97703049089423aee90e5fe3595f92cc17b8ab58ae18284e92e7c887079b6e1486ac7ee53aa6d889d2c0b844e9",
+        "tree_digest": "rivet-tree-v1:sha256:30593299d35e54da1204397b7b73873a721878864b14fabe2fd80515f2ad28d5"
+      },
+      "picocolors@1.1.1": {
+        "artifact": "sha512-c5c787dac9e1b5be4cf658aa0ec984c39ea57b7efa993664117fe311bfd1c4d1727a036e97b78db250973fd1438ff2dcbb45fc284c8c71e3f69eda5a1eb0c454",
+        "tree_digest": "rivet-tree-v1:sha256:2822006402d9a4cd91b838907983b43b088385e7e7d4ec370c6e8afda8109fb3"
+      },
+      "picomatch@4.0.7": {
+        "artifact": "sha512-a9c26ef3c436216a89b030f9dbd24a31dc069bf76f2275b81ef427470887f49b62849bf318eb1c0ed1c4df1d6904a794393cac43c91598b9c9da426eef285c18",
+        "tree_digest": "rivet-tree-v1:sha256:5998c511c11f81631b2619bc6c38fa3c87ba1ebb470bf93756705ae9861c1be2"
+      },
+      "postcss@8.5.28": {
+        "artifact": "sha512-451bb3a83b6de58f61deabb3e615a12be4cf9ec995b3a5b0494e8b90931e6381ecb54103b984c6f1425275ac0c4739b302d57e284a06f0ddd0836a8bcb9bccfc",
+        "tree_digest": "rivet-tree-v1:sha256:752ef180d41a3abce4028dfd65893a631d3a8ff2fb3e0a0a876a9632f011c95c"
+      },
+      "prelude-ls@1.2.1": {
+        "artifact": "sha512-be47033eb459a354192db9f944b18fa60fd698843ae6aa165a170629ffdbe5ea659246ab5f49bdcfca6909ab789a53aa52c5a9c8db9880edd5472ad81d2cd7e6",
+        "tree_digest": "rivet-tree-v1:sha256:2cb039733b2d97f993a647f417dc910c367db2df3178eb88df9351bf2e4777ec"
+      },
+      "punycode@2.3.1": {
+        "artifact": "sha512-bd8b7b503d54f5683ad77f2c84bb4b3af740bbef03b02fe2945b44547707fb0c9d712a4d136d007d239db9fe8c91115a84be4563b5f5a14ee7295645b5fabc16",
+        "tree_digest": "rivet-tree-v1:sha256:7d0d5d9fd303ac51453d6f92c1b6c0cc12c67c1e2bae91cbf4e7e4da5e79680f"
+      },
+      "react-dom@19.3.0": {
+        "artifact": "sha512-24393c76089fe753a31680c4ef4f8e4fd202c98afeebd1e59a284dc29d7e36c7db9dadede6c22209af59264b43990e3fd5bfeb9f6ea1200476b985c332be6bd1",
+        "tree_digest": "rivet-tree-v1:sha256:bf61c5b00800a882607f501e70e19337eb60543399e3b24cbf2fff2895e264a1"
+      },
+      "react@19.3.0": {
+        "artifact": "sha512-13c2d471bb415addb46db9766281dfc7864305dc554df38ab42667f5c0d227897afe7ba8029729201723e3bb76c19a155fc836647b8c1db892860091d53e52a2",
+        "tree_digest": "rivet-tree-v1:sha256:6b0ad0fbc89d99bac471e38107b223f4077e005d206aea3fbcc77e2b1eff1ca9"
+      },
+      "require-directory@2.1.1": {
+        "artifact": "sha512-7c6c4423bfb0b06f71aef763b2b9662f6d8e3134e21d1c0032ba2211e320abc833a0b0bf3d0afb46c4434932d483f6d9019b45f9354890773aff84482abba2f9",
+        "tree_digest": "rivet-tree-v1:sha256:d69d5ff0095bdfef94f183b117849fea868805e42acfbb7f7735c93654c15297"
+      },
+      "require-main-filename@2.0.0": {
+        "artifact": "sha512-34a37990c0f294aba577160b4947eb6e8e53bb387885dfb613c34f3d7d36999b67d55b911104e861efd9765272f89dee0a97da886174e5eec1f16d225db4079a",
+        "tree_digest": "rivet-tree-v1:sha256:5db6a2a3f32c95cc57dc6593ac717f8230d1ff02f3de8f4ab8d56864a9a6c0b5"
+      },
+      "resolve-from@4.0.0": {
+        "artifact": "sha512-a5bfcc6265ecb40932b11171f2988d235b4614d408140def904dc6ab812e035745ea01e9ffebe066ab021896a9bf2f0ddd0fb8a3b170beab8f25c9d9ed1632e2",
+        "tree_digest": "rivet-tree-v1:sha256:e630fb03c04b0bd8f530a3d0c07075bc837405a3242be549fb0ebfc987a4974b"
+      },
+      "rolldown@1.2.11": {
+        "artifact": "sha512-aa94b0232cf48c742ae6a5c14cdc45984ebaeb8ac9ecefb84ef3c53a239a052af3f0838773592828a4aa4ccd87eaed541b5f93bdeb82eaf6831ca5c53af6f52b",
+        "tree_digest": "rivet-tree-v1:sha256:53c0c8eaf907dc2b5bcefd93a20d35f21c48113504c7f97494e503e3a687e72b"
+      },
+      "scheduler@0.28.0": {
+        "artifact": "sha512-8eea2b7c2988908c3cb53fa9e415d29ba3c98d017fc9c11898acb3511088b7f45a64884bf8fba56d0f58bb6cf51dd3890dda834e5c40d7ec4a0661d726c73303",
+        "tree_digest": "rivet-tree-v1:sha256:768de81a7f3ca863a24efe611c0dbbafd0cfda4e55aeb4ac3b6bd56a73ac0dba"
+      },
+      "semver@7.8.5": {
+        "artifact": "sha512-63bfca0ec6fc2e3a28669c1aa86cae94ee8342592c8029dc7211c693eb19218e1206f52870c044147e54af57c8e1d57e26f974c3a723bee71a222e34a6e462a0",
+        "tree_digest": "rivet-tree-v1:sha256:7f4d9720a392724ad6415472e44ca16d15131698fd991295ec072eb5520aa746"
+      },
+      "set-blocking@2.0.0": {
+        "artifact": "sha512-2a22814bc0275861322f3a1f15f9af2b0a5d3f3aa2cb5e8bbd07cadf2bff7d51fb063d77ff097725247527eadf81113dabbc5424ae2abe04bcada48e78b51e87",
+        "tree_digest": "rivet-tree-v1:sha256:6ef44b80e76d39883a55a45fc7303ec91420800ab619900cefa0faaf19f4cdf3"
+      },
+      "shebang-command@2.0.0": {
+        "artifact": "sha512-907c6bdb366962d766acdd6a0e3aeb5ff675ad1d641bc0f1fa09292b51b87979af5ecc26704d614d6056614ce5ada630d7fc99a7a62e0d8efb62dbdb3747660c",
+        "tree_digest": "rivet-tree-v1:sha256:f8eda6f7ff6abdad0c34a18461cab7ac9d278ba13e0e8284e45642e5f3317e9a"
+      },
+      "shebang-regex@3.0.0": {
+        "artifact": "sha512-efef9d161b5cc77df9dee05aabc0c347836ec417ad0730bb6503a19934089c711de9b4ab5dd884cb30af1b4ed9e3851874b4a1594c97b7933fca1cfc7a471bd4",
+        "tree_digest": "rivet-tree-v1:sha256:ba68ed0cb88fc38973e2cb9c826d16ac1cbf0848f90e2398e9e254722042e18b"
+      },
+      "source-map-js@1.2.1": {
+        "artifact": "sha512-51758c2a12cec1529bef6f0852d40f5f17d853ebac7726ed52b2bff2e184f0240cbeb84ea70bf30c1c23d108522fb31073bbc8b084811bc550f3e203431a5f40",
+        "tree_digest": "rivet-tree-v1:sha256:7f12cfb1ec0cd20c301498a3c99580f422c8a87857d8b2cf23cc7e1cf9cb6382"
+      },
+      "string-width@2.1.1": {
+        "artifact": "sha512-9cea87e7d75e0aaf52447971ab5030f39267b78c3a2af2caa9656293aa00f599255cb3483a5aa0e05db2ad3d4c55a4e302abd5c1d7de67bc3b682bc90fbba093",
+        "tree_digest": "rivet-tree-v1:sha256:a2e5a2d659075b4de4e66b9e07eaec8e1ac15a1e392bf1d0a05e3ae68f6e591d"
+      },
+      "string-width@4.2.3": {
+        "artifact": "sha512-c0ac90450a63274b08a7ad84ad265d1ac8cc256b1aa79a1136284786ee86ec954effd8c807a5327af2feb57b8eaab9e0f23fdcc4a4d6c96530bd24eb8a2673fe",
+        "tree_digest": "rivet-tree-v1:sha256:017f16e3e450090ea726d2d0f781b21861c05c93cd8db1a0107870b9e89c89bf"
+      },
+      "strip-ansi@4.0.0": {
+        "artifact": "sha512-e17689db341d0b344e6438af1152033e47109fc2cc1526bc923f06c5bfcb9f0ceff40f1572d359fa57e2bc2fec5778af5bc1252531115d9a0f051ad92a434aa3",
+        "tree_digest": "rivet-tree-v1:sha256:7ff7ed30e0881457631895dc4195e16f6bc8e136a4eab30d0abef24f7d8b2fb8"
+      },
+      "strip-ansi@6.0.1": {
+        "artifact": "sha512-637f153d21dcaa416b0a916743dbee4979aabaebf9a1738aa46793e9a1abaf7a3719cf409556ba2417d448e0a76f1186645fbfd28a08ecaacfb944b3b54754e4",
+        "tree_digest": "rivet-tree-v1:sha256:dc11ac260c0b7131d80a9cef32a523d47d8a080a8181191e0f9eeae682dcfb1f"
+      },
+      "strip-final-newline@2.0.0": {
+        "artifact": "sha512-06ba6f7cd004ddd72fabb965df156e9b38ca8d9439b48d6c11420aaf752892cd17525e394addc595ab55a9e7fda6b9388d10f3856e96660fb76e4f77cbaa4b8c",
+        "tree_digest": "rivet-tree-v1:sha256:232dfb26f4e1c5ba9b88556027c6c8a59dfd5cbcac9d5f544b7961c89b676c4e"
+      },
+      "strip-json-comments@3.1.1": {
+        "artifact": "sha512-e9f3dcf91e22870a8fe8dfda22fd9fd60307f25395b56407a2a0b8c8aea8483555a1cba602c7c2aa39179ea89832198cc12fe61072e9ed57a196ddea97a9448a",
+        "tree_digest": "rivet-tree-v1:sha256:2f26988e2ba6e340f141c21b62fe971d20f241200683f04e6eae4dacd13e17e4"
+      },
+      "supports-color@7.2.0": {
+        "artifact": "sha512-aa9080bd197db2db8e1ef78ab27ec79dc251befe74d6a21a70acd094effe2f0c5cf7ed2adb02f2bf80dfbedf34fc33e7da9a8e06c25d0e2a205c647df8ebf047",
+        "tree_digest": "rivet-tree-v1:sha256:7092b26d217bc115e79a9eec005ff2a1bb711eda5d473a64159c4d73898d5cfc"
+      },
+      "tinyglobby@0.2.17": {
+        "artifact": "sha512-c1747f758a5ca8a99f5a911d66388a24ec023459dd0f40cc9eb5bf7188d51adb449017d581c2c51e836b963e3b9a339589cf72c8dbbae5a96c805e0d4324dada",
+        "tree_digest": "rivet-tree-v1:sha256:233558b925d8db078595b270e08ecd3b995eb89096e2b9142362e1be0771c537"
+      },
+      "type-check@0.4.0": {
+        "artifact": "sha512-5e5794a1cf6ec065ea8d6c176944d9026ccc705679f39f10036befc7552be7121c8b15c83fef0b9c50e0469954df4bacead7aa765b2415fbbe69ee0aefd3a87b",
+        "tree_digest": "rivet-tree-v1:sha256:29c8ef3afcb41cd924f99712158c34d043e05591ccb1c3584ae6ce91988a24b4"
+      },
+      "uri-js@4.4.1": {
+        "artifact": "sha512-eeb294cb2df7435c9cf7ca50d430262edc17d74f45ed321f5a55b561da3c5a5d628b549e1e279e8741c77cf78bd9f3172bacf4b3c79c2acf5fac2b8b26f9dd06",
+        "tree_digest": "rivet-tree-v1:sha256:ba958360f0c8be7cc73e17c6e1cb037444d617a8e9cdd4227cd5aedb13e6d74a"
+      },
+      "vite@8.3.1": {
+        "artifact": "sha512-fdbbc7f44f6d9825d11a9dae5d8dd66ce95daa94f01646e16bff0035a110e95931847eb42b2a8bc2066aea51b6cbee2e4f9e71f7ef5e50732943bb869ce08a8c",
+        "tree_digest": "rivet-tree-v1:sha256:a5441a1d3d85c83ec9a460fa71d3e6dc8dd42e729e887efa490d88b60dae4511"
+      },
+      "which-module@2.0.1": {
+        "artifact": "sha512-881759e7b443be7391f4018184c2f6bc565fee1f2f9818e1a1a66a3832411561d5b4a90398ab876a2ddcc793e054cad7e580cda76ec0a1f61b03072d492faf85",
+        "tree_digest": "rivet-tree-v1:sha256:120608dd411301920709db2f1208d495f758e2f7e567370d1bfcf03d12f162f3"
+      },
+      "which@2.0.2": {
+        "artifact": "sha512-04b2374e5d535b73ef97bd25df2ab763ae22f9ac29c17aac181616924a8cb676d782b303fb28fbae15b492e103c7325a6171a3116e6881aa4a34c10a34c8e26c",
+        "tree_digest": "rivet-tree-v1:sha256:434e6243d10e6a7bef48ad07f94b31954ea63f12592346b59221eb4ef22da3f6"
+      },
+      "word-wrap@1.2.5": {
+        "artifact": "sha512-04ddb607979a30c23d50cb63ac677983978260fa423c3532d052576d8b1a4f9cd8c6314e7244b9dd2403137a56915a16a475d56f706b61c10de13c1ae7907970",
+        "tree_digest": "rivet-tree-v1:sha256:dfa0ecb15292e70b7734345eaa4c2073e173151bd8bf85c50948d5cc1b99e6eb"
+      },
+      "wrap-ansi@6.2.0": {
+        "artifact": "sha512-afa94f7011b1657948732984bbb227c43321756d0a0f1a4b82814b720b9ab3109a27f48e219c0835ab4af4a63fb5ff99ae5cb038a5345038f70135d405fc495c",
+        "tree_digest": "rivet-tree-v1:sha256:82f7557251142dc3db71048ff6ed4acadaab7057252807ac06143fa35436ae21"
+      },
+      "y18n@4.0.3": {
+        "artifact": "sha512-24a86a4cec12aea340d4d639952ced2751ab06252874b326219b8b88368c449fa2b4577e001544f170633af2162fead2a8d0c2ef82c24859a56ff538519e2125",
+        "tree_digest": "rivet-tree-v1:sha256:557d59a4541f5d244e1e29a446aeaed26673606caf8d91bf2556ad8a0c7ae14e"
+      },
+      "yargs-parser@18.1.3": {
+        "artifact": "sha512-a39d23d09793a32ff82ba39971a4265ba9725d72a1abb72c4445dc0f0936a2614f244c1434e56d24abe60ebf442357c025953265c445ee4c460569915ee76b09",
+        "tree_digest": "rivet-tree-v1:sha256:ccb7e400bf81027750ec1575ad2dc05657e617ee4da46489f4d90defea22b6eb"
+      },
+      "yargs@15.4.1": {
+        "artifact": "sha512-69e3dbc4399c616fbe3daa81b09f8761417009dbf82d5bdd9e1072efc139ecf228afcfce56f84cac00c51440e1f031c3151bff3bd8b794f86c10d8ceed05f4f8",
+        "tree_digest": "rivet-tree-v1:sha256:2474c0e40a0153332924f10366d735d658d749c1b4c97842c67d97e20b167596"
+      },
+      "yocto-queue@0.1.0": {
+        "artifact": "sha512-ad592cbec9cd09d27fa2119ceb180fc3237c7a1782c6c88b33c9b1b84fedfe6395a897b03ee3b59a22e94c74224604ca08b7b12f831e00555a82db3b1e6359d9",
+        "tree_digest": "rivet-tree-v1:sha256:1689b3a8d74ea606c803bbbb4d82ceed3481aa7bf5c4ebca56d9464913a57248"
+      }
+    }
+  },
+  "measurements": {
+    "baseline_e2e": [
+      {
+        "placement": "tmp",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.514,
+        "warm_median_s": 0.484,
+        "plain_node_median_s": 0.06,
+        "max_child_rss_mib": 51.5,
+        "verify_phases_ms": {
+          "fetch_ms": 7,
+          "hash_ms": 254,
+          "layout_ms": 31,
+          "other_ms": 118,
+          "total_ms": 410
+        }
+      }
+    ],
+    "streaming_e2e_and_abba": [
+      {
+        "placement": "tmp",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.565,
+        "warm_median_s": 0.492,
+        "plain_node_median_s": 0.064,
+        "max_child_rss_mib": 52.5,
+        "verify_phases_ms": {
+          "fetch_ms": 6,
+          "hash_ms": 255,
+          "layout_ms": 32,
+          "other_ms": 117,
+          "total_ms": 410
+        }
+      },
+      {
+        "command": [
+          "semver",
+          "1.2.3",
+          "-r",
+          "^1.0.0"
+        ],
+        "packages_verified": 137,
+        "samples": {
+          "before": [
+            {
+              "wall_ms": 413.76383299939334,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 5,
+                "hash_ms": 257,
+                "layout_ms": 27,
+                "other_ms": 118,
+                "total_ms": 407
+              }
+            },
+            {
+              "wall_ms": 446.50141600868665,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 267,
+                "layout_ms": 29,
+                "other_ms": 136,
+                "total_ms": 438
+              }
+            },
+            {
+              "wall_ms": 419.80504197999835,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 259,
+                "layout_ms": 29,
+                "other_ms": 118,
+                "total_ms": 412
+              }
+            },
+            {
+              "wall_ms": 434.9903340043966,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 260,
+                "layout_ms": 31,
+                "other_ms": 130,
+                "total_ms": 427
+              }
+            },
+            {
+              "wall_ms": 415.9224169852678,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 250,
+                "layout_ms": 30,
+                "other_ms": 122,
+                "total_ms": 408
+              }
+            },
+            {
+              "wall_ms": 423.64962500869296,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 256,
+                "layout_ms": 27,
+                "other_ms": 127,
+                "total_ms": 416
+              }
+            },
+            {
+              "wall_ms": 420.4624579870142,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 255,
+                "layout_ms": 30,
+                "other_ms": 122,
+                "total_ms": 413
+              }
+            },
+            {
+              "wall_ms": 452.8587079839781,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 287,
+                "layout_ms": 29,
+                "other_ms": 123,
+                "total_ms": 445
+              }
+            },
+            {
+              "wall_ms": 427.0719579944853,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 256,
+                "layout_ms": 32,
+                "other_ms": 123,
+                "total_ms": 418
+              }
+            },
+            {
+              "wall_ms": 407.9021250072401,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 241,
+                "layout_ms": 27,
+                "other_ms": 126,
+                "total_ms": 400
+              }
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 401.51116700144485,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 248,
+                "layout_ms": 28,
+                "other_ms": 113,
+                "total_ms": 395
+              }
+            },
+            {
+              "wall_ms": 421.6684580023866,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 5,
+                "hash_ms": 245,
+                "layout_ms": 26,
+                "other_ms": 139,
+                "total_ms": 415
+              }
+            },
+            {
+              "wall_ms": 424.2040000099223,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 256,
+                "layout_ms": 30,
+                "other_ms": 125,
+                "total_ms": 417
+              }
+            },
+            {
+              "wall_ms": 431.7942500056233,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 5,
+                "hash_ms": 270,
+                "layout_ms": 23,
+                "other_ms": 127,
+                "total_ms": 425
+              }
+            },
+            {
+              "wall_ms": 411.60983400186524,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 253,
+                "layout_ms": 30,
+                "other_ms": 116,
+                "total_ms": 405
+              }
+            },
+            {
+              "wall_ms": 414.37783298897557,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 246,
+                "layout_ms": 30,
+                "other_ms": 125,
+                "total_ms": 407
+              }
+            },
+            {
+              "wall_ms": 430.32820799271576,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 258,
+                "layout_ms": 32,
+                "other_ms": 128,
+                "total_ms": 424
+              }
+            },
+            {
+              "wall_ms": 407.79095800826326,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 250,
+                "layout_ms": 28,
+                "other_ms": 117,
+                "total_ms": 401
+              }
+            },
+            {
+              "wall_ms": 414.3174590135459,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 5,
+                "hash_ms": 251,
+                "layout_ms": 32,
+                "other_ms": 119,
+                "total_ms": 407
+              }
+            },
+            {
+              "wall_ms": 422.2063749912195,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 255,
+                "layout_ms": 27,
+                "other_ms": 127,
+                "total_ms": 415
+              }
+            }
+          ]
+        },
+        "before_median_ms": {
+          "wall": 422.1,
+          "total_ms": 414.5,
+          "layout_ms": 29.0,
+          "fetch_ms": 6.0,
+          "hash_ms": 256.5,
+          "other_ms": 123.0
+        },
+        "after_median_ms": {
+          "wall": 418.0,
+          "total_ms": 411.0,
+          "layout_ms": 29.0,
+          "fetch_ms": 6.0,
+          "hash_ms": 252.0,
+          "other_ms": 125.0
+        }
+      }
+    ],
+    "static_four_e2e_and_abba": [
+      {
+        "placement": "tmp",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.389,
+        "warm_median_s": 0.393,
+        "plain_node_median_s": 0.07,
+        "max_child_rss_mib": 53.3,
+        "verify_phases_ms": {
+          "fetch_ms": 6,
+          "hash_ms": 125,
+          "layout_ms": 38,
+          "other_ms": 143,
+          "total_ms": 312
+        }
+      },
+      {
+        "command": [
+          "semver",
+          "1.2.3",
+          "-r",
+          "^1.0.0"
+        ],
+        "packages_verified": 137,
+        "samples": {
+          "before": [
+            {
+              "wall_ms": 427.54750000312924,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 236,
+                "layout_ms": 23,
+                "other_ms": 153,
+                "total_ms": 419
+              }
+            },
+            {
+              "wall_ms": 460.1963339955546,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 261,
+                "layout_ms": 31,
+                "other_ms": 153,
+                "total_ms": 452
+              }
+            },
+            {
+              "wall_ms": 466.06199999223463,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 267,
+                "layout_ms": 23,
+                "other_ms": 161,
+                "total_ms": 458
+              }
+            },
+            {
+              "wall_ms": 436.74708300386555,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 249,
+                "layout_ms": 24,
+                "other_ms": 149,
+                "total_ms": 429
+              }
+            },
+            {
+              "wall_ms": 449.28420800715685,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 253,
+                "layout_ms": 44,
+                "other_ms": 139,
+                "total_ms": 442
+              }
+            },
+            {
+              "wall_ms": 506.5529159910511,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 290,
+                "layout_ms": 40,
+                "other_ms": 159,
+                "total_ms": 496
+              }
+            },
+            {
+              "wall_ms": 476.8547920102719,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 281,
+                "layout_ms": 23,
+                "other_ms": 158,
+                "total_ms": 469
+              }
+            },
+            {
+              "wall_ms": 454.8951670003589,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 9,
+                "hash_ms": 251,
+                "layout_ms": 25,
+                "other_ms": 162,
+                "total_ms": 447
+              }
+            },
+            {
+              "wall_ms": 479.52004201943055,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 14,
+                "hash_ms": 248,
+                "layout_ms": 24,
+                "other_ms": 186,
+                "total_ms": 472
+              }
+            },
+            {
+              "wall_ms": 417.41266701137647,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 238,
+                "layout_ms": 25,
+                "other_ms": 140,
+                "total_ms": 409
+              }
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 300.8785830170382,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 112,
+                "layout_ms": 22,
+                "other_ms": 153,
+                "total_ms": 294
+              }
+            },
+            {
+              "wall_ms": 327.29333301540464,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 151,
+                "layout_ms": 28,
+                "other_ms": 134,
+                "total_ms": 320
+              }
+            },
+            {
+              "wall_ms": 317.80533300479874,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 120,
+                "layout_ms": 34,
+                "other_ms": 149,
+                "total_ms": 309
+              }
+            },
+            {
+              "wall_ms": 366.70954202418216,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 128,
+                "layout_ms": 26,
+                "other_ms": 198,
+                "total_ms": 358
+              }
+            },
+            {
+              "wall_ms": 600.0284579931758,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 8,
+                "hash_ms": 254,
+                "layout_ms": 29,
+                "other_ms": 302,
+                "total_ms": 593
+              }
+            },
+            {
+              "wall_ms": 318.4625420253724,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 132,
+                "layout_ms": 29,
+                "other_ms": 143,
+                "total_ms": 310
+              }
+            },
+            {
+              "wall_ms": 297.6332080143038,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 122,
+                "layout_ms": 26,
+                "other_ms": 136,
+                "total_ms": 290
+              }
+            },
+            {
+              "wall_ms": 295.30079098185524,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 124,
+                "layout_ms": 23,
+                "other_ms": 134,
+                "total_ms": 288
+              }
+            },
+            {
+              "wall_ms": 302.58433299604803,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 110,
+                "layout_ms": 22,
+                "other_ms": 157,
+                "total_ms": 296
+              }
+            },
+            {
+              "wall_ms": 276.74212501733564,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 118,
+                "layout_ms": 22,
+                "other_ms": 122,
+                "total_ms": 269
+              }
+            }
+          ]
+        },
+        "before_median_ms": {
+          "wall": 457.5,
+          "total_ms": 449.5,
+          "layout_ms": 24.5,
+          "fetch_ms": 7.0,
+          "hash_ms": 252.0,
+          "other_ms": 155.5
+        },
+        "after_median_ms": {
+          "wall": 310.2,
+          "total_ms": 302.5,
+          "layout_ms": 26.0,
+          "fetch_ms": 7.0,
+          "hash_ms": 123.0,
+          "other_ms": 146.0
+        }
+      }
+    ],
+    "dynamic_e2e_abba_and_worker_sweep": [
+      {
+        "placement": "tmp",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.3,
+        "warm_median_s": 0.269,
+        "plain_node_median_s": 0.062,
+        "max_child_rss_mib": 51.1,
+        "verify_phases_ms": {
+          "fetch_ms": 7,
+          "hash_ms": 58,
+          "layout_ms": 17,
+          "other_ms": 100,
+          "total_ms": 182
+        }
+      },
+      {
+        "command": [
+          "semver",
+          "1.2.3",
+          "-r",
+          "^1.0.0"
+        ],
+        "packages_verified": 137,
+        "samples": {
+          "before": [
+            {
+              "wall_ms": 402.8688749822322,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 224,
+                "layout_ms": 24,
+                "other_ms": 140,
+                "total_ms": 395
+              }
+            },
+            {
+              "wall_ms": 387.8539169963915,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 225,
+                "layout_ms": 19,
+                "other_ms": 130,
+                "total_ms": 381
+              }
+            },
+            {
+              "wall_ms": 399.56004198757,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 234,
+                "layout_ms": 22,
+                "other_ms": 129,
+                "total_ms": 392
+              }
+            },
+            {
+              "wall_ms": 406.7644579918124,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 231,
+                "layout_ms": 25,
+                "other_ms": 137,
+                "total_ms": 399
+              }
+            },
+            {
+              "wall_ms": 410.3240420226939,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 221,
+                "layout_ms": 22,
+                "other_ms": 153,
+                "total_ms": 403
+              }
+            },
+            {
+              "wall_ms": 401.26445799251087,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 215,
+                "layout_ms": 22,
+                "other_ms": 150,
+                "total_ms": 394
+              }
+            },
+            {
+              "wall_ms": 422.3950830055401,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 245,
+                "layout_ms": 20,
+                "other_ms": 144,
+                "total_ms": 416
+              }
+            },
+            {
+              "wall_ms": 394.4583330012392,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 221,
+                "layout_ms": 22,
+                "other_ms": 138,
+                "total_ms": 387
+              }
+            },
+            {
+              "wall_ms": 423.95016600494273,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 246,
+                "layout_ms": 26,
+                "other_ms": 138,
+                "total_ms": 416
+              }
+            },
+            {
+              "wall_ms": 399.4978329865262,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 214,
+                "layout_ms": 22,
+                "other_ms": 151,
+                "total_ms": 393
+              }
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 243.78591700224206,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 64,
+                "layout_ms": 22,
+                "other_ms": 143,
+                "total_ms": 236
+              }
+            },
+            {
+              "wall_ms": 230.44562502764165,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 63,
+                "layout_ms": 20,
+                "other_ms": 134,
+                "total_ms": 224
+              }
+            },
+            {
+              "wall_ms": 222.72387499106117,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 64,
+                "layout_ms": 29,
+                "other_ms": 117,
+                "total_ms": 216
+              }
+            },
+            {
+              "wall_ms": 209.52533301897347,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 62,
+                "layout_ms": 22,
+                "other_ms": 113,
+                "total_ms": 203
+              }
+            },
+            {
+              "wall_ms": 217.93416599393822,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 61,
+                "layout_ms": 20,
+                "other_ms": 124,
+                "total_ms": 211
+              }
+            },
+            {
+              "wall_ms": 189.71499998588115,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 60,
+                "layout_ms": 22,
+                "other_ms": 95,
+                "total_ms": 183
+              }
+            },
+            {
+              "wall_ms": 219.77329201763496,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 5,
+                "hash_ms": 63,
+                "layout_ms": 37,
+                "other_ms": 108,
+                "total_ms": 213
+              }
+            },
+            {
+              "wall_ms": 230.16916698543355,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 61,
+                "layout_ms": 22,
+                "other_ms": 134,
+                "total_ms": 223
+              }
+            },
+            {
+              "wall_ms": 218.20066700456664,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 5,
+                "hash_ms": 61,
+                "layout_ms": 32,
+                "other_ms": 114,
+                "total_ms": 212
+              }
+            },
+            {
+              "wall_ms": 204.50841702404432,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 59,
+                "layout_ms": 21,
+                "other_ms": 112,
+                "total_ms": 198
+              }
+            }
+          ]
+        },
+        "before_median_ms": {
+          "wall": 402.1,
+          "total_ms": 394.5,
+          "layout_ms": 22.0,
+          "fetch_ms": 7.0,
+          "hash_ms": 224.5,
+          "other_ms": 139.0
+        },
+        "after_median_ms": {
+          "wall": 219.0,
+          "total_ms": 212.5,
+          "layout_ms": 22.0,
+          "fetch_ms": 6.0,
+          "hash_ms": 61.5,
+          "other_ms": 115.5
+        }
+      },
+      {
+        "command": [
+          "semver",
+          "1.2.3",
+          "-r",
+          "^1.0.0"
+        ],
+        "packages_verified": 137,
+        "samples": {
+          "2": [
+            {
+              "wall_ms": 274.1667499940377,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 110,
+                "layout_ms": 22,
+                "other_ms": 130,
+                "total_ms": 268
+              }
+            },
+            {
+              "wall_ms": 293.12754099373706,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 8,
+                "hash_ms": 110,
+                "layout_ms": 20,
+                "other_ms": 149,
+                "total_ms": 287
+              }
+            },
+            {
+              "wall_ms": 247.65895900782198,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 106,
+                "layout_ms": 22,
+                "other_ms": 107,
+                "total_ms": 241
+              }
+            },
+            {
+              "wall_ms": 269.2687079834286,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 108,
+                "layout_ms": 22,
+                "other_ms": 127,
+                "total_ms": 263
+              }
+            },
+            {
+              "wall_ms": 264.17599999695085,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 108,
+                "layout_ms": 22,
+                "other_ms": 122,
+                "total_ms": 258
+              }
+            },
+            {
+              "wall_ms": 274.98641598504037,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 117,
+                "layout_ms": 22,
+                "other_ms": 123,
+                "total_ms": 268
+              }
+            },
+            {
+              "wall_ms": 320.6267080095131,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 132,
+                "layout_ms": 25,
+                "other_ms": 149,
+                "total_ms": 313
+              }
+            },
+            {
+              "wall_ms": 287.40649999235757,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 113,
+                "layout_ms": 21,
+                "other_ms": 141,
+                "total_ms": 281
+              }
+            },
+            {
+              "wall_ms": 260.1852079969831,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 110,
+                "layout_ms": 23,
+                "other_ms": 113,
+                "total_ms": 253
+              }
+            },
+            {
+              "wall_ms": 251.58991597709246,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 112,
+                "layout_ms": 23,
+                "other_ms": 103,
+                "total_ms": 245
+              }
+            }
+          ],
+          "4": [
+            {
+              "wall_ms": 232.65687498496845,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 64,
+                "layout_ms": 21,
+                "other_ms": 134,
+                "total_ms": 225
+              }
+            },
+            {
+              "wall_ms": 269.95662500848994,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 60,
+                "layout_ms": 22,
+                "other_ms": 175,
+                "total_ms": 263
+              }
+            },
+            {
+              "wall_ms": 199.6092080080416,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 61,
+                "layout_ms": 20,
+                "other_ms": 106,
+                "total_ms": 193
+              }
+            },
+            {
+              "wall_ms": 200.83283298299648,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 62,
+                "layout_ms": 26,
+                "other_ms": 100,
+                "total_ms": 194
+              }
+            },
+            {
+              "wall_ms": 217.28291601175442,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 61,
+                "layout_ms": 21,
+                "other_ms": 123,
+                "total_ms": 211
+              }
+            },
+            {
+              "wall_ms": 261.56104198889807,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 64,
+                "layout_ms": 22,
+                "other_ms": 162,
+                "total_ms": 255
+              }
+            },
+            {
+              "wall_ms": 221.11787501489744,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 7,
+                "hash_ms": 63,
+                "layout_ms": 22,
+                "other_ms": 122,
+                "total_ms": 214
+              }
+            },
+            {
+              "wall_ms": 217.50200001406483,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 62,
+                "layout_ms": 23,
+                "other_ms": 120,
+                "total_ms": 211
+              }
+            },
+            {
+              "wall_ms": 209.15091701317579,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 60,
+                "layout_ms": 23,
+                "other_ms": 114,
+                "total_ms": 203
+              }
+            },
+            {
+              "wall_ms": 194.73658301285468,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 61,
+                "layout_ms": 21,
+                "other_ms": 99,
+                "total_ms": 187
+              }
+            }
+          ],
+          "8": [
+            {
+              "wall_ms": 263.50387500133365,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 52,
+                "layout_ms": 23,
+                "other_ms": 176,
+                "total_ms": 257
+              }
+            },
+            {
+              "wall_ms": 206.04391599772498,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 48,
+                "layout_ms": 21,
+                "other_ms": 125,
+                "total_ms": 200
+              }
+            },
+            {
+              "wall_ms": 180.58908300008625,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 47,
+                "layout_ms": 22,
+                "other_ms": 99,
+                "total_ms": 174
+              }
+            },
+            {
+              "wall_ms": 213.05770799517632,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 48,
+                "layout_ms": 22,
+                "other_ms": 131,
+                "total_ms": 207
+              }
+            },
+            {
+              "wall_ms": 215.51616699434817,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 52,
+                "layout_ms": 21,
+                "other_ms": 130,
+                "total_ms": 209
+              }
+            },
+            {
+              "wall_ms": 186.43558301846497,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 50,
+                "layout_ms": 22,
+                "other_ms": 102,
+                "total_ms": 180
+              }
+            },
+            {
+              "wall_ms": 220.39087500888854,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 51,
+                "layout_ms": 24,
+                "other_ms": 133,
+                "total_ms": 214
+              }
+            },
+            {
+              "wall_ms": 206.48074999917299,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 50,
+                "layout_ms": 21,
+                "other_ms": 123,
+                "total_ms": 200
+              }
+            },
+            {
+              "wall_ms": 198.49949999479577,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 8,
+                "hash_ms": 53,
+                "layout_ms": 20,
+                "other_ms": 111,
+                "total_ms": 192
+              }
+            },
+            {
+              "wall_ms": 204.28291702410206,
+              "packages_verified": 137,
+              "verify_timings_ms": {
+                "fetch_ms": 6,
+                "hash_ms": 51,
+                "layout_ms": 19,
+                "other_ms": 122,
+                "total_ms": 198
+              }
+            }
+          ]
+        },
+        "median_ms": {
+          "2": {
+            "wall": 271.7,
+            "total_ms": 265.5,
+            "layout_ms": 22.0,
+            "fetch_ms": 6.0,
+            "hash_ms": 110.0,
+            "other_ms": 125.0
+          },
+          "4": {
+            "wall": 217.4,
+            "total_ms": 211.0,
+            "layout_ms": 22.0,
+            "fetch_ms": 6.0,
+            "hash_ms": 61.5,
+            "other_ms": 121.0
+          },
+          "8": {
+            "wall": 206.3,
+            "total_ms": 200.0,
+            "layout_ms": 21.5,
+            "fetch_ms": 6.0,
+            "hash_ms": 50.5,
+            "other_ms": 124.0
+          }
+        }
+      }
+    ],
+    "large_file_memory": {
+      "file_mib": 192,
+      "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27",
+      "samples": {
+        "before": [
+          {
+            "wall_ms": 401.80058300029486,
+            "rss_mib": 193.40625,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 395.09737500338815,
+            "rss_mib": 193.375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 393.1426249910146,
+            "rss_mib": 193.375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 411.88862500712276,
+            "rss_mib": 193.46875,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 391.0625829885248,
+            "rss_mib": 193.40625,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 404.43054199567996,
+            "rss_mib": 193.40625,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          }
+        ],
+        "after": [
+          {
+            "wall_ms": 365.75812500086613,
+            "rss_mib": 1.4375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 367.6349589950405,
+            "rss_mib": 1.375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 379.76962499669753,
+            "rss_mib": 1.4375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 414.8833340150304,
+            "rss_mib": 1.4375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 364.8681250051595,
+            "rss_mib": 1.4375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          },
+          {
+            "wall_ms": 366.94770798203535,
+            "rss_mib": 1.4375,
+            "digest": "rivet-tree-v1:sha256:4cf41eb8076f001c710faeee5bf4c6c4fefcbe7f95e28bc36cc27bcc0f139e27"
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "wall_ms": 398.4,
+          "peak_rss_mib": 193.4
+        },
+        "after": {
+          "wall_ms": 367.3,
+          "peak_rss_mib": 1.4
+        }
+      }
+    },
+    "final_eight_worker_e2e": [
+      {
+        "placement": "tmp",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.349,
+        "warm_median_s": 0.318,
+        "plain_node_median_s": 0.066,
+        "max_child_rss_mib": 50.6,
+        "verify_phases_ms": {
+          "fetch_ms": 7,
+          "hash_ms": 52,
+          "layout_ms": 18,
+          "other_ms": 116,
+          "total_ms": 193
+        }
+      },
+      {
+        "placement": "home",
+        "platform": "darwin",
+        "packages": 137,
+        "command": "semver 1.2.3 -r ^1.0.0",
+        "first_run_s": 0.341,
+        "warm_median_s": 0.246,
+        "plain_node_median_s": 0.063,
+        "max_child_rss_mib": 51.3,
+        "verify_phases_ms": {
+          "fetch_ms": 6,
+          "hash_ms": 40,
+          "layout_ms": 20,
+          "other_ms": 140,
+          "total_ms": 206
+        }
+      }
+    ]
+  },
+  "scope": "ABBA verifier samples alternate release binaries on one stable installed tree with a local registry; --dry-run includes all installed-file checks and sandbox preparation. E2E warm medians include package execution and use separate fresh projects. Memory samples are direct tree_hash helper peak RSS from wait4 on one 192 MiB file, not process-tree RSS.",
+  "validation": {
+    "final_eight_worker_e2e": "tools/e2e/npm-port.sh passed in tmp and home placements on isolated f2c3c0d plus archived hashing patch; normal run, tamper, revocation, offline, install and publish scenarios passed",
+    "rust": "61 tests passed; cargo clippy --locked --all-targets -- -D warnings passed; cargo fmt --check passed"
+  }
+}

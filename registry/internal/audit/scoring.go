@@ -12,17 +12,30 @@ import (
 // Evidence is the signed record of everything an audit observed. Its JSON
 // shape is part of the public audit contract (docs/adr/0005).
 type Evidence struct {
-	Static      StaticEvidence      `json:"static"`
-	Upstream    *UpstreamEvidence   `json:"upstream,omitempty"`
-	Provenance  *ProvenanceEvidence `json:"provenance,omitempty"`
-	Diff        *DiffEvidence       `json:"diff,omitempty"`
-	SafeProbes  []ProbeEvidence     `json:"safe_probes,omitempty"`
-	Adversarial []ProbeEvidence     `json:"adversarial_probes,omitempty"`
-	Egress      []EgressEvidence    `json:"egress,omitempty"`
-	Honeytokens []HoneytokenAccess  `json:"honeytokens,omitempty"`
-	Privacy     map[string][]string `json:"privacy,omitempty"`
-	Sandbox     map[string]string   `json:"sandbox,omitempty"`
-	Agent       map[string]string   `json:"agent,omitempty"`
+	validatedTrace *validatedTrace
+	Static         StaticEvidence      `json:"static"`
+	Upstream       *UpstreamEvidence   `json:"upstream,omitempty"`
+	Provenance     *ProvenanceEvidence `json:"provenance,omitempty"`
+	Diff           *DiffEvidence       `json:"diff,omitempty"`
+	SafeProbes     []ProbeEvidence     `json:"safe_probes,omitempty"`
+	Adversarial    []ProbeEvidence     `json:"adversarial_probes,omitempty"`
+	Egress         []EgressEvidence    `json:"egress,omitempty"`
+	Honeytokens    []HoneytokenAccess  `json:"honeytokens,omitempty"`
+	Privacy        map[string][]string `json:"privacy,omitempty"`
+	Sandbox        map[string]string   `json:"sandbox,omitempty"`
+	Agent          map[string]string   `json:"agent,omitempty"`
+}
+
+// A DockerRunner sets this only after checking the host trace session and the
+// isolated observer's completed stream. It is deliberately absent from JSON.
+type validatedTrace struct {
+	containerID  string
+	nonce        string
+	packageName  string
+	version      string
+	artifactHash string
+	treeDigest   string
+	manifestHash string
 }
 
 type StaticEvidence struct {

@@ -63,7 +63,11 @@ func run() error {
 	switch mode := env("RIVET_AUDIT_MODE", "static"); mode {
 	case "static":
 	case "gvisor":
-		pipeline.Sandbox = audit.NewDockerRunner(env("RIVET_AUDIT_AGENT_IMAGE", "rivet-audit-agent:local"))
+		runner := audit.NewDockerRunner(env("RIVET_AUDIT_AGENT_IMAGE", "rivet-audit-agent:local"))
+		runner.ObserverImage = env("RIVET_AUDIT_OBSERVER_IMAGE", "rivet-audit-observer:local")
+		runner.RunscBin = env("RIVET_AUDIT_RUNSC_BIN", "runsc")
+		runner.RunscRoot = env("RIVET_AUDIT_RUNSC_ROOT", "/var/run/docker/runtime-runc/moby")
+		pipeline.Sandbox = runner
 	default:
 		return fmt.Errorf("unknown RIVET_AUDIT_MODE %q (want static or gvisor)", mode)
 	}

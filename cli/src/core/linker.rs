@@ -24,13 +24,14 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::{
     attestation::{Statement, TrustedKey},
     lockfile::Lockfile,
     policy::Policy,
     registry_client::RegistryClient,
-    resolver::{validate_package_name, Graph},
+    resolver::{validate_package_name, without_failed_optional, Graph, Node},
     sandbox::{self, SandboxSpec},
     store::{remove_tree, safe_id, LocalStore},
     tree,
@@ -68,6 +69,19 @@ pub struct LinkReport {
     pub script_failures: Vec<String>,
 }
 
+#[derive(Debug)]
+struct OptionalScriptFailure {
+    id: String,
+    detail: String,
+}
+
+impl std::fmt::Display for OptionalScriptFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "optional {}: {}", self.id, self.detail)
+    }
+}
+impl std::error::Error for OptionalScriptFailure {}
+
 pub fn modules_dir(root: &Path) -> PathBuf {
     root.join("node_modules")
 }
@@ -91,9 +105,20 @@ pub fn read_state(root: &Path) -> Result<Option<InstalledState>> {
 pub fn package_path(root: &Path, id: &str, name: &str) -> PathBuf {
     modules_dir(root)
         .join(".rivet")
-        .join(safe_id(id))
+        .join(slot_id(id))
         .join("node_modules")
         .join(name)
+}
+
+/// Keep a contextual instance in one filesystem component even for valid
+/// long npm names. Short historical slots retain their existing spelling.
+pub fn slot_id(id: &str) -> String {
+    let encoded = safe_id(id);
+    if encoded.len() <= 255 {
+        encoded
+    } else {
+        format!("sha256-{}", hex::encode(Sha256::digest(id.as_bytes())))
+    }
 }
 
 pub struct Linker<'a> {
@@ -121,34 +146,51 @@ impl Linker<'_> {
         }
         // Build beside the existing installation. A failed fetch, script or
         // link leaves the old tree runnable.
-        let staging = tempfile::Builder::new()
-            .prefix(".rivet-install-")
-            .tempdir_in(root)?;
-        let result = self.build(staging.path(), root, graph, registry)?;
-        let staged_modules = modules_dir(staging.path());
-        let backup = staging.path().join("previous-node_modules");
-        if modules.exists() {
-            fs::rename(&modules, &backup).context("back up previous install")?;
-        }
-        if let Err(err) = fs::rename(&staged_modules, &modules) {
-            if backup.exists() {
-                fs::rename(&backup, &modules)
-                    .context("restore previous install after failed swap")?;
+        let mut current = graph.clone();
+        let mut failures = Vec::new();
+        loop {
+            let staging = tempfile::Builder::new()
+                .prefix(".rivet-install-")
+                .tempdir_in(root)?;
+            let mut result = match self.build(staging.path(), root, &current, registry) {
+                Ok(result) => result,
+                Err(error) if error.downcast_ref::<OptionalScriptFailure>().is_some() => {
+                    let failure = error
+                        .downcast_ref::<OptionalScriptFailure>()
+                        .expect("checked");
+                    failures.push(failure.to_string());
+                    current = without_failed_optional(&current, &failure.id)?;
+                    validate_graph_paths(&current)?;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            result.1.script_failures.splice(0..0, failures);
+            let staged_modules = modules_dir(staging.path());
+            let backup = staging.path().join("previous-node_modules");
+            if modules.exists() {
+                fs::rename(&modules, &backup).context("back up previous install")?;
             }
-            return Err(err).context("activate staged installation");
-        }
-        if let Err(err) = self.store.write_install_receipt(root, self.key, &result.0) {
-            remove_tree(&modules)?;
-            if backup.exists() {
-                fs::rename(&backup, &modules)
-                    .context("restore previous install after receipt failure")?;
+            if let Err(err) = fs::rename(&staged_modules, &modules) {
+                if backup.exists() {
+                    fs::rename(&backup, &modules)
+                        .context("restore previous install after failed swap")?;
+                }
+                return Err(err).context("activate staged installation");
             }
-            return Err(err).context("record trusted installation");
+            if let Err(err) = self.store.write_install_receipt(root, self.key, &result.0) {
+                remove_tree(&modules)?;
+                if backup.exists() {
+                    fs::rename(&backup, &modules)
+                        .context("restore previous install after receipt failure")?;
+                }
+                return Err(err).context("record trusted installation");
+            }
+            if backup.exists() {
+                remove_tree(&backup)?;
+            }
+            return Ok(result);
         }
-        if backup.exists() {
-            remove_tree(&backup)?;
-        }
-        Ok(result)
     }
 
     fn build(
@@ -177,7 +219,7 @@ impl Linker<'_> {
             copy_tree(&store_dirs[id], &target, !runs_scripts)?;
             let deps_dir = modules
                 .join(".rivet")
-                .join(safe_id(id))
+                .join(slot_id(id))
                 .join("node_modules");
             for (alias, dep) in &node.deps {
                 if alias == name {
@@ -228,16 +270,11 @@ impl Linker<'_> {
             match self.run_scripts(root, &dir, &node.statement) {
                 Ok(()) => report.scripts_ran.push(id.clone()),
                 Err(err) if node.optional => {
-                    report
-                        .script_failures
-                        .push(format!("optional {id}: {err:#}"));
-                    unlink_package(&modules, graph, &id)?;
-                    state.lock.packages.remove(&id);
-                    for package in state.lock.packages.values_mut() {
-                        package.dependencies.retain(|_, dep| dep != &id);
+                    return Err(OptionalScriptFailure {
+                        id,
+                        detail: format!("{err:#}"),
                     }
-                    state.lock.roots.retain(|_, root| root.package != id);
-                    continue;
+                    .into());
                 }
                 Err(err) => bail!("required install script failed for {id}: {err:#}"),
             }
@@ -249,7 +286,7 @@ impl Linker<'_> {
 
         // Removing a failed optional package can orphan its dependencies.
         for id in state.lock.retain_reachable() {
-            remove_tree(&modules.join(".rivet").join(safe_id(&id)))?;
+            remove_tree(&modules.join(".rivet").join(slot_id(&id)))?;
             state.script_modified.remove(&id);
         }
 
@@ -260,20 +297,37 @@ impl Linker<'_> {
     fn fetch_all(&self, graph: &Graph) -> Result<BTreeMap<String, PathBuf>> {
         let results = Mutex::new(BTreeMap::new());
         let errors = Mutex::new(Vec::new());
-        let work = Mutex::new(graph.nodes.iter());
+        let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut representatives = BTreeMap::new();
+        for (id, node) in &graph.nodes {
+            let hash = &node.statement.artifact.hash;
+            if let Some(previous) = representatives.get(hash) {
+                let previous: &&Node = previous;
+                if previous.statement.artifact.tree_digest != node.statement.artifact.tree_digest {
+                    bail!("signed releases disagree on tree digest for artifact {hash}");
+                }
+            } else {
+                representatives.insert(hash.clone(), node);
+            }
+            groups.entry(hash.clone()).or_default().push(id.clone());
+        }
+        let work = Mutex::new(representatives.into_iter());
         std::thread::scope(|scope| {
             for _ in 0..8 {
                 scope.spawn(|| loop {
                     let next = work.lock().expect("work").next();
-                    let Some((id, node)) = next else { break };
+                    let Some((hash, node)) = next else { break };
                     match self.store.ensure_package(self.client, &node.statement) {
                         Ok(dir) => {
-                            results.lock().expect("results").insert(id.clone(), dir);
+                            let mut results = results.lock().expect("results");
+                            for id in &groups[&hash] {
+                                results.insert(id.clone(), dir.clone());
+                            }
                         }
                         Err(err) => errors
                             .lock()
                             .expect("errors")
-                            .push(format!("{id}: {err:#}")),
+                            .push(format!("{hash}: {err:#}")),
                     }
                 });
             }
@@ -345,30 +399,6 @@ impl Linker<'_> {
         }
         Ok(())
     }
-}
-
-/// Removes a package's virtual-store slot and every link pointing at it.
-fn unlink_package(modules: &Path, graph: &Graph, id: &str) -> Result<()> {
-    remove_tree(&modules.join(".rivet").join(safe_id(id)))?;
-    for (parent_id, parent) in &graph.nodes {
-        for (alias, dep) in &parent.deps {
-            if dep == id {
-                remove_tree(
-                    &modules
-                        .join(".rivet")
-                        .join(safe_id(parent_id))
-                        .join("node_modules")
-                        .join(alias),
-                )?;
-            }
-        }
-    }
-    for (alias, root) in &graph.roots {
-        if root.package == id {
-            remove_tree(&modules.join(alias))?;
-        }
-    }
-    Ok(())
 }
 
 /// Dependencies before dependents, so install scripts see built deps.
@@ -677,6 +707,7 @@ pub(crate) mod tests {
                 signature: String::new(),
             },
             deps: BTreeMap::new(),
+            peer_bindings: BTreeMap::new(),
             optional: false,
         }
     }
@@ -726,6 +757,15 @@ pub(crate) mod tests {
     #[test]
     fn shims_quote_paths() {
         assert_eq!(shell_quote("a b'c"), "'a b'\\''c'");
+    }
+
+    #[test]
+    fn contextual_slot_fits_filesystem_component_for_long_package_name() {
+        let name = "a".repeat(200);
+        let base = format!("{name}@1.0.0");
+        let contextual = format!("{base}__peers_{}", "b".repeat(64));
+        assert!(slot_id(&contextual).len() <= 255);
+        assert_ne!(slot_id(&base), slot_id(&contextual));
     }
 
     #[test]
