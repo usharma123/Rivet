@@ -30,6 +30,7 @@
       - any-glob-to-any-file: docs/adr/**
       - any-glob-to-any-file: docs/security-review.md
       - any-glob-to-any-file: docs/verification-compatibility-work.md
+      - any-glob-to-any-file: docs/agent-cli.md
       - any-glob-to-any-file: .github/**
       - any-glob-to-any-file: Makefile
       - any-glob-to-any-file: README.md

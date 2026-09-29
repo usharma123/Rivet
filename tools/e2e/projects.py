@@ -16,7 +16,7 @@ import time
 
 def run_corpus(base, rivet, env):
     # Import lazily; compatibility.py may be the __main__ module.
-    from compatibility import manifest, HOST_TARGET
+    from compatibility import HOST_TARGET
     cases = [
         {"name": "formatter", "deps": {"prettier": "3.5.3"},
          "files": {"input.js": "const   answer={value:42}\n"},
@@ -68,7 +68,9 @@ def run_corpus(base, rivet, env):
         for case in cases:
             print("==> real project: " + case["name"], flush=True)
             project = base / ("project-" + case["name"])
-            manifest(project, case["deps"])
+            project.mkdir()
+            (project / "package.json").write_text(json.dumps({"name": case["name"], "private": True, "devDependencies": case["deps"], "scripts": {"check": " ".join(case["args"])}}) + "\n")
+            (project / "rivet.toml").write_text("[policy]\nmin_release_age_hours = 0\n")
             for name, content in case["files"].items():
                 (project / name).write_text(content)
             record = {"name": case["name"], "dependencies": case["deps"], "status": "failed", "phase": "install"}
@@ -88,7 +90,7 @@ def run_corpus(base, rivet, env):
                     for p in lock["variants"][HOST_TARGET]["packages"].values()})
                 record["phase"] = "frozen-install"
                 shutil.rmtree(project / "node_modules")
-                frozen, elapsed = execute([rivet, "install", "--frozen"], project, timeout=900)
+                frozen, elapsed = execute([rivet, "ci"], project, timeout=900)
                 record["frozen_install_s"] = elapsed
                 success(frozen)
                 if (project / "rivet.lock").read_bytes() != lock_bytes:
@@ -105,12 +107,16 @@ def run_corpus(base, rivet, env):
                     artifact = project / case["artifact"]
                     if not artifact.is_file() or case["expect_artifact"] not in artifact.read_text():
                         raise RuntimeError("expected build artifact missing or incorrect")
+                # Plain Node may create node_modules/.cache. Keep its mutable
+                # baseline separate from the verified Rivet installation.
+                baseline = base / ("baseline-" + case["name"])
+                shutil.copytree(project, baseline, symlinks=True)
                 samples = {"rivet": [], "plain_node": []}
-                plain = ["node", project / "node_modules" / case["entry"], *args[1:]]
+                plain = ["node", baseline / "node_modules" / case["entry"], *args[1:]]
                 record["phase"] = "benchmark"
                 for _ in range(3):
                     for label, cmd in (("rivet", rivet_args), ("plain_node", plain)):
-                        result, elapsed = execute(cmd, project)
+                        result, elapsed = execute(cmd, project if label == "rivet" else baseline)
                         success(result)
                         samples[label].append(elapsed)
                 record["samples_s"] = samples

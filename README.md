@@ -5,7 +5,8 @@ Rivet is a package manager, registry and execution trust layer for npm packages.
 ```sh
 rivet import npm:prettier          # global tool, full tree, verified
 rivet run prettier --write src/    # re-verified, sandboxed, network off
-rivet init && rivet add eslint@^9 && rivet install   # project node_modules + rivet.lock
+rivet install -D eslint@^9       # existing package.json project + rivet.lock
+rivet ci                        # reproduce and verify the committed Rivet lock
 ```
 
 ## How it defends against supply-chain attacks
@@ -57,10 +58,14 @@ Public CLI commands tracked by workspace governance:
 ```text
 rivet init                 create rivet.toml (with a [policy] section)
 rivet add                  add a dependency (ranges, tags, scoped names, npm: aliases)
-rivet install              resolve or re-verify rivet.lock, link node_modules (--frozen)
+rivet install              install a project or add packages; package.json or rivet.toml
+rivet ci                   reproduce rivet.lock without updating it
+rivet remove               remove dependencies and reinstall
+rivet update               refresh dependencies within declared ranges
+rivet exec                 run an installed binary without script lookup
 rivet import               install an npm package as a global tool
 rivet inspect              show a package's signed statement, audit, provenance and diff
-rivet run                  verify every exposed installed package and run in the sandbox
+rivet run                  run a project script or installed binary after verification
 rivet verify               fetch a fresh statement, re-hash installed files (--reaudit)
 rivet publish              publish a Rivet-native package
 rivet revoke               revoke a release
@@ -73,6 +78,11 @@ rivet trust reset          forget the pinned key
 ```
 
 Useful flags: `--allow-network`, `--allow-write <path>`, `--allow-env <name>`, `--allow-scripts`, `--allow-fresh`, `--min-age-hours <n>`, `--require-provenance`, `--allow-unverified`, `--unsafe-allow-risk`, `--unsafe-allow-revoked`, `--unsafe-no-sandbox`, `--json`, `--events`, `--dry-run`.
+
+See [npm projects and agent usage](docs/agent-cli.md) for supported package.json
+fields, structured errors, streaming events, plans, concurrent agents, and current
+compatibility limits. The [local-first CLI decision](docs/adr/0008-local-first-agent-cli.md)
+separates implemented cache reuse from proposed background synchronization.
 
 ### Portable locks and peers
 
@@ -104,6 +114,7 @@ require_sandbox_audit = false   # require a certified gVisor audit when true
 Public schemas:
 
 - `event.schema.json`
+- `cli-result.schema.json`
 - `rivet-attestation.schema.json`
 - `rivet-lock.schema.json`
 - `rivet-manifest.schema.json`

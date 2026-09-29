@@ -1,17 +1,21 @@
 use std::{
     io::Read,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
+    process::Stdio,
 };
 
 use anyhow::{bail, Context, Result};
 use serde_json::json;
 
 use crate::core::{
+    error::Failure,
     installed::Verifier,
     linker::{self, BinTarget, InstalledState},
     manifest::Manifest,
-    output::{emit, Event, OutputMode},
+    output::{emit, progress, Event, OutputMode},
     policy::Policy,
+    project::{Project, ProjectLock},
     sandbox::{self, SandboxSpec},
     session::Session,
 };
@@ -32,12 +36,10 @@ pub fn locate(project: Option<&Path>, command: &str, session: &Session) -> Resul
     let project_root = project.map(Path::to_path_buf).unwrap_or(cwd);
     if let Some(state) = linker::read_state(&project_root)? {
         if let Some(target) = state.bins.get(command).cloned() {
-            let manifest_path = project_root.join("rivet.toml");
-            let manifest = if manifest_path.exists() {
-                Some(
-                    Manifest::read_from(&manifest_path)
-                        .with_context(|| format!("read {}", manifest_path.display()))?,
-                )
+            let manifest = if project_root.join("package.json").exists()
+                || project_root.join("rivet.toml").exists()
+            {
+                Some(Project::read(&project_root)?.manifest)
             } else {
                 None
             };
@@ -77,7 +79,12 @@ pub fn run(
     flags: CommonFlags,
 ) -> Result<()> {
     let session = Session::open()?;
-    let located = locate(project.as_deref(), &command, &session)?;
+    let mut located = locate(project.as_deref(), &command, &session)?;
+    let _guard = ProjectLock::acquire(&located.root)?;
+    located.state = linker::read_state(&located.root)?.context("installation disappeared")?;
+    if located.manifest.is_some() {
+        located.manifest = Some(Project::read(&located.root)?.manifest);
+    }
     let policy = Policy::new(
         located.manifest.as_ref().and_then(|m| m.policy.as_ref()),
         &flags,
@@ -152,6 +159,9 @@ pub fn run(
         .flat_map(|root| {
             [
                 root.join("rivet.toml"),
+                root.join("package.json"),
+                root.join("package-lock.json"),
+                root.join(".rivet"),
                 root.join("rivet.lock"),
                 // Node can resolve packages and shims anywhere below this tree.
                 // Protect the parent itself so it cannot be renamed, edited under
@@ -185,48 +195,233 @@ pub fn run(
         prepared.backend.describe(),
         if network { "on" } else { "off" },
     );
-    if flags.dry_run || flags.plan || flags.output_mode() != OutputMode::Human {
-        emit(
+    let mut result = json!({
+        "command": command, "args": args, "package": statement.id(),
+        "packages_verified": report.statements.len(), "verify_timings_ms": report.timings,
+        "online": report.online, "warnings": report.warnings,
+        "sandbox": prepared.backend.describe(), "network": network, "entry": entry,
+        "planned": flags.dry_run || flags.plan,
+    });
+    if flags.dry_run || flags.plan {
+        return emit(
             flags.output_mode(),
-            "Rivet Run",
+            "Rivet Run Plan",
             vec![summary],
-            Event::new("install.started")
-                .with("command", command.clone())
-                .with("package", statement.id()),
-            json!({
-                "command": command,
-                "args": args,
-                "package": statement.id(),
-                "packages_verified": report.statements.len(),
-                "verify_timings_ms": report.timings,
-                "online": report.online,
-                "warnings": report.warnings,
-                "sandbox": prepared.backend.describe(),
-                "network": network,
-                "entry": entry,
-            }),
-        )?;
-        if flags.dry_run || flags.plan {
-            return Ok(());
-        }
-    } else if !flags.quiet {
+            Event::new("plan.created").with("command", &command),
+            result,
+        );
+    }
+    if flags.verbose && flags.output_mode() == OutputMode::Human {
+        eprintln!("rivet: {summary}");
+    }
+    if !flags.quiet && flags.output_mode() == OutputMode::Human {
         for warning in &report.warnings {
             eprintln!("rivet: warning: {warning}");
         }
-        if flags.verbose {
-            eprintln!("rivet: {summary}");
-            let t = report.timings;
-            eprintln!(
-                "rivet: verification took {} ms total ({} ms layout, {} ms fetching statements, {} ms hashing, {} ms other verification)",
-                t.total_ms, t.layout_ms, t.fetch_ms, t.hash_ms, t.other_ms
-            );
-        }
+    }
+    progress(
+        flags.output_mode(),
+        Event::new("run.started")
+            .with("command", &command)
+            .with("packages_verified", report.statements.len()),
+    )?;
+    execute(&mut prepared, &flags)?;
+    result["exit_code"] = 0.into();
+    if flags.output_mode() != OutputMode::Human {
+        emit(
+            flags.output_mode(),
+            "Rivet Run",
+            vec![],
+            Event::new("run.completed")
+                .with("command", &command)
+                .with("exit_code", 0),
+            result,
+        )?;
+    }
+    Ok(())
+}
+
+fn execute(prepared: &mut sandbox::Prepared, flags: &CommonFlags) -> Result<()> {
+    if flags.output_mode() != OutputMode::Human {
+        // Keep stdout exclusively machine-readable without buffering unlimited
+        // child output in memory. Tool output remains live on stderr.
+        prepared.command.stdout(Stdio::from(std::io::stderr()));
     }
     let status = prepared
         .command
         .status()
         .context("start sandboxed process")?;
-    std::process::exit(status.code().unwrap_or(1));
+    if !status.success() {
+        use std::os::unix::process::ExitStatusExt;
+        let mut failure = Failure::new(
+            "PROCESS_FAILED",
+            format!("sandboxed command exited with {status}"),
+            "Inspect the command output on stderr and fix the reported failure.",
+        );
+        failure.exit_code = status
+            .code()
+            .unwrap_or_else(|| 128 + status.signal().unwrap_or(1));
+        bail!(failure);
+    }
+    Ok(())
+}
+
+/// Project scripts take precedence for `run`; `exec` and generated shims always
+/// select a verified binary and cannot be redirected by a same-named script.
+pub fn run_or_script(
+    project: Option<PathBuf>,
+    command: String,
+    args: Vec<String>,
+    flags: CommonFlags,
+) -> Result<()> {
+    let root = project.clone().unwrap_or(std::env::current_dir()?);
+    if root.join("package.json").exists() || root.join("rivet.toml").exists() {
+        let project_manifest = Project::read(&root)?;
+        if project_manifest.manifest.scripts.contains_key(&command) {
+            return run_script(&root, &command, &args, &flags);
+        }
+    }
+    run(project, command, args, flags)
+}
+
+fn run_script(root: &Path, name: &str, args: &[String], flags: &CommonFlags) -> Result<()> {
+    let root = root.canonicalize()?;
+    let _guard = ProjectLock::acquire(&root)?;
+    let project = Project::read(&root)?;
+    let script = project
+        .manifest
+        .scripts
+        .get(name)
+        .context("project script disappeared")?;
+    let session = Session::open()?;
+    let state = linker::read_state(&root)?.ok_or_else(|| {
+        Failure::new(
+            "NOT_INSTALLED",
+            "project dependencies are not installed",
+            "Run rivet install first, including for projects with no dependencies.",
+        )
+    })?;
+    let policy = Policy::new(project.manifest.policy.as_ref(), flags);
+    let report = Verifier {
+        store: &session.store,
+        client: &session.client,
+        key: &session.key,
+        policy: &policy,
+    }
+    .verify(&root, &state)?;
+    // Never execute mutable .bin wrappers inside a sandbox: build direct entry
+    // wrappers from the verified receipt, with the entire installed tree checked.
+    let bins = tempfile::Builder::new()
+        .prefix("rivet-script-bins-")
+        .tempdir()?;
+    let bin_path = bins.path().canonicalize()?;
+    for (command, target) in &state.bins {
+        linker::validate_command(command)?;
+        linker::validate_entry(&target.entry)?;
+        let statement = report
+            .statements
+            .get(&target.package)
+            .context("binary missing from verified graph")?;
+        let entry =
+            linker::package_path(&root, &target.package, &statement.name).join(&target.entry);
+        let (program, invocation_args) = invocation(&entry, &[])?;
+        let words: Vec<_> = std::iter::once(program.display().to_string())
+            .chain(invocation_args)
+            .map(|s| linker::shell_quote(&s))
+            .collect();
+        let path = bin_path.join(command);
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\nexec {} \"$@\"\n", words.join(" ")),
+        )?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o555))?;
+    }
+    let node = sandbox::node_binary()?;
+    let network = flags.allow_network || policy.allow_network.contains(name);
+    let protect_paths = [
+        "package.json",
+        "package-lock.json",
+        "rivet.toml",
+        "rivet.lock",
+        "node_modules",
+        ".rivet",
+    ]
+    .map(|p| root.join(p))
+    .into_iter()
+    .chain(std::iter::once(bin_path.clone()))
+    .collect();
+    let spec = SandboxSpec {
+        cwd: root.clone(),
+        read_paths: vec![root.clone(), bin_path.clone()],
+        write_paths: flags.allow_write.clone(),
+        protect_paths,
+        network,
+        env: vec![
+            (
+                "PATH".into(),
+                format!(
+                    "{}:{}:/usr/bin:/bin",
+                    bin_path.display(),
+                    node.parent().context("node parent")?.display()
+                ),
+            ),
+            ("npm_lifecycle_event".into(), name.into()),
+            (
+                "npm_package_name".into(),
+                project.manifest.package.name.clone(),
+            ),
+            (
+                "npm_package_version".into(),
+                project.manifest.package.version.clone(),
+            ),
+        ],
+        allow_env: flags.allow_env.clone(),
+        unsafe_no_sandbox: flags.unsafe_no_sandbox,
+        allow_store_tools: false,
+        store_home: Some(session.store.home.clone()),
+    };
+    // The script is project-authored shell code. Extra arguments are shell
+    // quoted individually and cannot introduce operators or substitutions.
+    let mut command = script.command.clone();
+    for arg in args {
+        command.push(' ');
+        command.push_str(&linker::shell_quote(arg));
+    }
+    project.assert_unchanged()?;
+    let mut prepared = sandbox::prepare(&spec, Path::new("/bin/sh"), &["-c".into(), command])?;
+    let mut result = json!({"script": name, "args": args, "packages_verified": report.statements.len(), "online": report.online, "warnings": report.warnings, "sandbox": prepared.backend.describe(), "network": network, "planned": flags.dry_run || flags.plan});
+    if flags.dry_run || flags.plan {
+        return emit(
+            flags.output_mode(),
+            "Rivet Script Plan",
+            vec![format!("Run {name}: {}", script.command)],
+            Event::new("plan.created").with("script", name),
+            result,
+        );
+    }
+    if !flags.quiet && flags.output_mode() == OutputMode::Human {
+        for warning in &report.warnings {
+            eprintln!("rivet: warning: {warning}");
+        }
+    }
+    progress(
+        flags.output_mode(),
+        Event::new("run.started").with("script", name),
+    )?;
+    execute(&mut prepared, flags)?;
+    result["exit_code"] = 0.into();
+    if flags.output_mode() != OutputMode::Human {
+        emit(
+            flags.output_mode(),
+            "Rivet Script",
+            vec![],
+            Event::new("run.completed")
+                .with("script", name)
+                .with("exit_code", 0),
+            result,
+        )?;
+    }
+    Ok(())
 }
 
 fn string_list(value: &serde_json::Value, key: &str) -> Vec<String> {

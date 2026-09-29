@@ -4,27 +4,65 @@ use anyhow::{bail, Context, Result};
 use serde_json::json;
 
 use crate::core::{
+    error::Failure,
     linker::{InstalledState, LinkReport, Linker},
     lockfile::Lockfile,
-    manifest::Manifest,
-    output::{emit_many, Event},
+    output::{emit_many, progress, Event},
     paths::ProjectPaths,
     policy::Policy,
+    project::{atomic_write, Project, ProjectLock},
     resolver::{target_key, Graph, Resolver},
     session::Session,
 };
 use crate::CommonFlags;
 
-pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
+#[derive(Default)]
+pub enum Edit {
+    #[default]
+    None,
+    Add(Vec<String>, bool),
+    Remove(Vec<String>),
+    Update,
+}
+
+pub fn run(frozen: bool, edit: Edit, flags: CommonFlags) -> Result<()> {
     let paths = ProjectPaths::from_current_dir()?;
-    if !paths.manifest.exists() {
-        bail!("rivet.toml not found; run `rivet init` first");
+    let _guard = ProjectLock::acquire(&paths.root)?;
+    let mut project = Project::read(&paths.root)?;
+    let before = project.manifest.dependencies.clone();
+    let editing = !matches!(edit, Edit::None | Edit::Update);
+    match &edit {
+        Edit::Add(packages, dev) => {
+            for package in packages {
+                let (name, range) = super::add::parse_dependency(package);
+                project.add(&name, &range, *dev)?;
+            }
+        }
+        Edit::Remove(packages) => {
+            for package in packages {
+                project.remove(package)?;
+            }
+        }
+        _ => {}
     }
-    let manifest = Manifest::read_from(&paths.manifest)
-        .with_context(|| format!("read {}", paths.manifest.display()))?;
+    let manifest = &project.manifest;
+    progress(
+        flags.output_mode(),
+        Event::new("install.started")
+            .with("project", &manifest.package.name)
+            .with("plan", flags.plan || flags.dry_run),
+    )?;
     let policy = Policy::new(manifest.policy.as_ref(), &flags);
-    let session = Session::open()?;
+    let lock_bytes = std::fs::read(&paths.lockfile).ok();
     let lock = Lockfile::read_current(&paths.lockfile)?;
+    if frozen
+        && !lock
+            .as_ref()
+            .is_some_and(|l| l.satisfies(&manifest.dependencies))
+    {
+        bail!(Failure::new("LOCKFILE_STALE", "rivet.lock is missing, unsupported, or out of date with the project manifest", "Run rivet install to create a current lockfile, then commit it before running rivet ci."));
+    }
+    let session = Session::open()?;
     if let Some(lock) = &lock {
         if !lock.registry.is_empty() && lock.registry != session.client.base_url() {
             bail!(
@@ -46,25 +84,32 @@ pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
         client: &session.client,
         key: &session.key,
         policy: &policy,
-        locked: lock.as_ref(),
+        locked: if matches!(edit, Edit::Update) {
+            None
+        } else {
+            lock.as_ref()
+        },
     };
-    let from_lock = lock
-        .as_ref()
-        .is_some_and(|l| l.satisfies(&manifest.dependencies));
-    if frozen && lock.as_ref().is_some_and(|l| l.version == 2) {
-        bail!("rivet.lock v2 has no portable target pins; run `rivet install` to regenerate v3 before using --frozen");
-    }
-    if frozen && !from_lock {
-        bail!("rivet.lock is missing, incomplete, or out of date with rivet.toml (--frozen)");
-    }
-    let portable = if from_lock {
-        lock.as_ref().expect("checked above").clone()
-    } else {
-        resolver.resolve_portable(&manifest.dependencies)?
+    let from_lock = !matches!(edit, Edit::Update)
+        && lock
+            .as_ref()
+            .is_some_and(|l| l.satisfies(&manifest.dependencies));
+    progress(
+        flags.output_mode(),
+        Event::new("resolution.started").with("from_lock", from_lock),
+    )?;
+    let portable = match &lock {
+        Some(lock) if from_lock => lock.clone(),
+        _ => resolver.resolve_portable(&manifest.dependencies)?,
     };
     let selected = portable.selected(&target_key()?)?;
     let graph = resolver.load_lockfile(&selected)?;
 
+    progress(
+        flags.output_mode(),
+        Event::new("resolution.completed").with("packages", graph.nodes.len()),
+    )?;
+    let changes = serde_json::json!({"before": before, "after": manifest.dependencies});
     if flags.dry_run || flags.plan {
         return emit_graph(
             &flags,
@@ -73,13 +118,67 @@ pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
             &graph,
             None,
             from_lock,
+            Some(changes),
         );
     }
-    let (_state, report) = materialize(&session, &policy, &paths.root, &graph, &flags)?;
-    if !from_lock {
-        portable.write_to(&paths.lockfile)?;
+    for node in graph.nodes.values() {
+        session
+            .store
+            .cache_attestation(&node.statement, &node.envelope, &session.key)?;
     }
-    paths.ensure_metadata()?;
+    let linker = Linker {
+        store: &session.store,
+        client: &session.client,
+        key: &session.key,
+        policy: &policy,
+        unsafe_no_sandbox: flags.unsafe_no_sandbox,
+    };
+    let original_manifest = std::fs::read(&project.path)?;
+    let mut wrote_manifest = false;
+    let mut wrote_lock = false;
+    progress(
+        flags.output_mode(),
+        Event::new("materialization.started").with("packages", graph.nodes.len()),
+    )?;
+    let result = linker.link_with_commit(&paths.root, &graph, session.client.base_url(), || {
+        project.assert_unchanged()?;
+        if std::fs::read(&paths.lockfile).ok() != lock_bytes {
+            bail!(Failure::new(
+                "PROJECT_CHANGED",
+                "rivet.lock changed during installation",
+                "Review concurrent changes and retry."
+            ));
+        }
+        if editing {
+            project.save()?;
+            wrote_manifest = true;
+        }
+        if !from_lock {
+            atomic_write(
+                &paths.lockfile,
+                &(serde_json::to_string_pretty(&portable)? + "\n").into_bytes(),
+            )?;
+            wrote_lock = true;
+        }
+        Ok(())
+    });
+    let (_state, report) = match result {
+        Ok(result) => result,
+        Err(error) => {
+            if wrote_manifest {
+                atomic_write(&project.path, &original_manifest)
+                    .context("restore manifest after failed activation")?;
+            }
+            if wrote_lock {
+                if let Some(bytes) = &lock_bytes {
+                    atomic_write(&paths.lockfile, bytes)?;
+                } else {
+                    std::fs::remove_file(&paths.lockfile)?;
+                }
+            }
+            return Err(error);
+        }
+    };
     emit_graph(
         &flags,
         "Rivet Install",
@@ -87,6 +186,7 @@ pub fn run(frozen: bool, flags: CommonFlags) -> Result<()> {
         &graph,
         Some(&report),
         from_lock,
+        Some(changes),
     )
 }
 
@@ -120,6 +220,7 @@ pub fn emit_graph(
     graph: &Graph,
     report: Option<&LinkReport>,
     from_lock: bool,
+    changes: Option<serde_json::Value>,
 ) -> Result<()> {
     let mut lines = vec![
         format!("Project: {project}"),
@@ -188,12 +289,19 @@ pub fn emit_graph(
         flags.output_mode(),
         title,
         lines,
-        vec![
-            Event::new("plan.created").with("packages", graph.nodes.len()),
-            Event::new("install.completed").with("packages", graph.nodes.len()),
-        ],
+        vec![Event::new(if report.is_some() {
+            "install.completed"
+        } else {
+            "plan.created"
+        })
+        .with("packages", graph.nodes.len())
+        .with("changes", &changes)],
         json!({
             "project": project,
+            "changed": report.is_some(),
+            "from_lock": from_lock,
+            "changes": changes,
+            "permission_requests": graph.nodes.values().filter(|node| !node.statement.manifest.install_scripts.is_empty()).map(|node| serde_json::json!({"package": node.statement.id(), "scripts": node.statement.manifest.install_scripts.keys().collect::<Vec<_>>()})).collect::<Vec<_>>(),
             "roots": graph.roots,
             "packages": graph.nodes.iter().map(|(id, node)| (id.clone(), json!({
                 "state": node.statement.state,

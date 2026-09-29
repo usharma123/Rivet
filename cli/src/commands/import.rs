@@ -8,6 +8,7 @@ use crate::core::{
     attestation::Statement,
     output::{emit_many, Event},
     policy::Policy,
+    project::ProjectLock,
     resolver::{split_name_version, Resolver},
     session::Session,
     store::StoredCommand,
@@ -52,6 +53,7 @@ pub fn run(spec: String, flags: CommonFlags) -> Result<()> {
 
     if !(flags.dry_run || flags.plan) {
         std::fs::create_dir_all(&tool_dir)?;
+        let _guard = ProjectLock::acquire(&tool_dir)?;
         let (state, report) = materialize(&session, &policy, &tool_dir, &graph, &flags)
             .with_context(|| format!("install {}", root.id()))?;
         for command in state.bins.keys() {

@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::core::{
     attestation::Statement,
     byok::ByokConfig,
-    output::{emit_many, Event, OutputMode},
+    output::{emit_many, progress, Event, OutputMode},
     registry_client::RegistryClient,
     risk::namesquat,
     store::LocalStore,
@@ -45,9 +45,7 @@ pub fn run(package: String, provider: String, flags: CommonFlags) -> Result<()> 
                     .with("provider", provider.clone())
                     .with("package", name.clone())
                     .with("version", version.clone()),
-                Event::new("eval.completed")
-                    .with("verdict", result.verdict.clone())
-                    .with("risk_score", result.risk_score),
+                Event::new("plan.created").with("verdict", &result.verdict),
             ],
             json!({
                 "result": result,
@@ -72,14 +70,18 @@ pub fn run(package: String, provider: String, flags: CommonFlags) -> Result<()> 
     };
     let response = registry.post("/v1/evals", &request)?;
     if flags.output_mode() == OutputMode::Json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "result": result,
-                "privacy_summary": privacy,
-                "registry_response": response,
-            }))?
-        );
+        emit_many(
+            flags.output_mode(),
+            "Rivet Eval",
+            vec![],
+            vec![],
+            json!({"result": result, "privacy_summary": privacy, "registry_response": response}),
+        )?;
+    } else {
+        progress(
+            flags.output_mode(),
+            Event::new("eval.completed").with("verdict", &result.verdict),
+        )?;
     }
     Ok(())
 }

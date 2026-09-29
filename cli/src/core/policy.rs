@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 
 use super::{attestation::Statement, manifest::PolicySection};
 use crate::CommonFlags;
@@ -81,9 +81,19 @@ impl Policy {
             "pending" if self.allow_unverified => warnings.push(format!(
                 "{id} has not passed a registry audit (--allow-unverified)"
             )),
-            "pending" => refuse(format!(
-                "{id} has not passed a registry audit; use --allow-unverified to override"
-            ))?,
+            "pending" => {
+                return Err(anyhow::Error::new(Refusal(format!(
+                    "{id} has not passed a registry audit"
+                ))))
+                .context(
+                    super::error::Failure::new(
+                        "AUDIT_PENDING",
+                        format!("audit pending for {id}"),
+                        "Wait for the registry audit to complete, then retry with backoff.",
+                    )
+                    .retry(),
+                )
+            }
             "quarantined" if self.unsafe_allow_risk => {
                 warnings.push(format!("{id} is quarantined (--unsafe-allow-risk)"))
             }
@@ -164,6 +174,19 @@ mod tests {
         assert_eq!(p.check(&s, true).unwrap().len(), 1);
         s.state = "warned".into();
         assert_eq!(p.check(&s, false).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn pending_audit_preserves_optional_refusal_and_agent_retry_code() {
+        let mut statement = sample_statement("demo", "1.0.0");
+        statement.state = "pending".into();
+        let error = policy(CommonFlags::default())
+            .check(&statement, false)
+            .unwrap_err();
+        assert!(error.downcast_ref::<Refusal>().is_some());
+        let failure = super::super::error::Failure::from_error(&error);
+        assert_eq!(failure.code, "AUDIT_PENDING");
+        assert!(failure.retryable);
     }
 
     #[test]

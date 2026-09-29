@@ -111,30 +111,16 @@ pub fn run(flags: CommonFlags) -> Result<()> {
             statement.artifact.hash
         );
     }
-    match flags.output_mode() {
-        OutputMode::Events => println!(
-            "{}",
-            serde_json::to_string(
-                &Event::new("release.published")
-                    .with("package", manifest.package.name)
-                    .with("version", manifest.package.version)
-                    .with("state", statement.state.clone())
-            )?
-        ),
-        OutputMode::Json => println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "review": review,
-                "statement": statement,
-            }))?
-        ),
-        OutputMode::Human => {
-            println!();
-            for line in describe(&statement) {
-                println!("  {line}");
-            }
-        }
-    }
+    emit_many(
+        flags.output_mode(),
+        "Rivet Publish",
+        describe(&statement),
+        vec![Event::new("release.published")
+            .with("package", &manifest.package.name)
+            .with("version", &manifest.package.version)
+            .with("state", &statement.state)],
+        json!({"review": review, "statement": statement}),
+    )?;
     Ok(())
 }
 

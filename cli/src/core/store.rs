@@ -83,6 +83,20 @@ impl LocalStore {
         statement: &Statement,
     ) -> Result<PathBuf> {
         let dir = self.package_dir(&statement.artifact.hash)?;
+        let locks = self.store_dir.join(".locks");
+        fs::create_dir_all(&locks)?;
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(locks.join(&statement.artifact.hash))?;
+        // Hold a per-artifact process lock through verification and publication.
+        // Other projects reuse the completed download after acquiring this lock.
+        // SAFETY: lock owns the descriptor and remains alive until return.
+        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            return Err(std::io::Error::last_os_error()).context("lock package cache entry");
+        }
         if dir.exists() {
             if tree::tree_digest_of_dir(&dir).ok().as_deref()
                 == Some(statement.artifact.tree_digest.as_str())

@@ -30,10 +30,43 @@ pub enum Command {
         #[command(flatten)]
         flags: CommonFlags,
     },
+    #[command(alias = "i")]
     Install {
+        /// Add these dependencies and install the resulting project.
+        packages: Vec<String>,
+        #[arg(short = 'D', long, requires = "packages")]
+        save_dev: bool,
         /// Fail instead of re-resolving when rivet.lock is missing or stale.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "packages")]
         frozen: bool,
+        #[command(flatten)]
+        flags: CommonFlags,
+    },
+    /// Reproduce rivet.lock without changing the manifest or lockfile.
+    Ci {
+        #[command(flatten)]
+        flags: CommonFlags,
+    },
+    /// Remove dependencies and install the remaining graph.
+    #[command(alias = "uninstall")]
+    Remove {
+        #[arg(required = true)]
+        packages: Vec<String>,
+        #[command(flatten)]
+        flags: CommonFlags,
+    },
+    /// Refresh all dependencies within their declared ranges.
+    Update {
+        #[command(flatten)]
+        flags: CommonFlags,
+    },
+    /// Run an installed package binary without project-script lookup.
+    Exec {
+        #[arg(long)]
+        project: Option<std::path::PathBuf>,
+        command: String,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
         #[command(flatten)]
         flags: CommonFlags,
     },
@@ -137,7 +170,7 @@ pub enum ByokCommand {
 
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct CommonFlags {
-    #[arg(long)]
+    #[arg(long, conflicts_with = "events")]
     pub json: bool,
     #[arg(long)]
     pub events: bool,
@@ -196,12 +229,99 @@ impl CommonFlags {
     }
 }
 
-pub fn run() -> Result<()> {
-    let cli = Cli::parse();
-    match cli.command {
+pub fn entry() -> i32 {
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            if !error.use_stderr() {
+                let _ = error.print();
+                return 0;
+            }
+            let args: Vec<_> = std::env::args().take_while(|arg| arg != "--").collect();
+            let mode = if args.iter().any(|arg| arg == "--json") {
+                OutputMode::Json
+            } else if args.iter().any(|arg| arg == "--events") {
+                OutputMode::Events
+            } else {
+                OutputMode::Human
+            };
+            let failure = core::error::Failure::new(
+                "INVALID_ARGUMENTS",
+                error.to_string(),
+                "Run rivet <command> --help for supported arguments.",
+            );
+            let _ = core::output::failure(mode, &failure);
+            return 2;
+        }
+    };
+    let mode = cli.command.output_mode();
+    match dispatch(cli.command) {
+        Ok(()) => 0,
+        Err(error) => {
+            let failure = core::error::Failure::from_error(&error);
+            let _ = core::output::failure(mode, &failure);
+            failure.exit_code
+        }
+    }
+}
+
+impl Command {
+    fn output_mode(&self) -> OutputMode {
+        match self {
+            Self::Init { flags }
+            | Self::Add { flags, .. }
+            | Self::Install { flags, .. }
+            | Self::Ci { flags }
+            | Self::Remove { flags, .. }
+            | Self::Update { flags }
+            | Self::Exec { flags, .. }
+            | Self::Import { flags, .. }
+            | Self::Inspect { flags, .. }
+            | Self::Run { flags, .. }
+            | Self::Verify { flags, .. }
+            | Self::Publish { flags }
+            | Self::Revoke { flags, .. }
+            | Self::Yank { flags, .. }
+            | Self::Eval { flags, .. } => flags.output_mode(),
+            Self::Byok { command } => match command {
+                ByokCommand::Add { flags, .. } | ByokCommand::List { flags } => flags.output_mode(),
+            },
+            Self::Trust { command } => match command {
+                TrustCommand::Show { flags } | TrustCommand::Reset { flags } => flags.output_mode(),
+            },
+        }
+    }
+}
+
+fn dispatch(command: Command) -> Result<()> {
+    match command {
         Command::Init { flags } => init::run(flags),
         Command::Add { package, flags } => add::run(package, flags),
-        Command::Install { frozen, flags } => install::run(frozen, flags),
+        Command::Install {
+            frozen,
+            packages,
+            save_dev,
+            flags,
+        } => install::run(
+            frozen,
+            if packages.is_empty() {
+                install::Edit::None
+            } else {
+                install::Edit::Add(packages, save_dev)
+            },
+            flags,
+        ),
+        Command::Ci { flags } => install::run(true, install::Edit::None, flags),
+        Command::Remove { packages, flags } => {
+            install::run(false, install::Edit::Remove(packages), flags)
+        }
+        Command::Update { flags } => install::run(false, install::Edit::Update, flags),
+        Command::Exec {
+            project,
+            command,
+            args,
+            flags,
+        } => run::run(project, command, args, flags),
         Command::Import { spec, flags } => import::run(spec, flags),
         Command::Inspect { target, flags } => inspect::run(target, flags),
         Command::Run {
@@ -209,7 +329,7 @@ pub fn run() -> Result<()> {
             command,
             args,
             flags,
-        } => run::run(project, command, args, flags),
+        } => run::run_or_script(project, command, args, flags),
         Command::Verify {
             target,
             reaudit,

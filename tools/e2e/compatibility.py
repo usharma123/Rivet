@@ -603,6 +603,9 @@ def main():
             native_portable_case(base, args.rivet, env, proxy, args)
         elif not args.skip_linux:
             portable_case(base, args.rivet, env, proxy, args)
+        if args.native:
+            from agent_dx import run_agent_cases
+            run_agent_cases(base, args.rivet, env, proxy)
         if args.corpus:
             from projects import run_corpus
             run_corpus(base, args.rivet, env)

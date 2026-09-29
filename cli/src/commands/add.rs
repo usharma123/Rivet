@@ -1,55 +1,42 @@
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use serde_json::json;
 
 use crate::core::{
-    manifest::Manifest,
     output::{emit, Event},
     paths::ProjectPaths,
+    project::{Project, ProjectLock},
     resolver::split_name_version,
 };
 use crate::CommonFlags;
 
 pub fn run(package: String, flags: CommonFlags) -> Result<()> {
     let paths = ProjectPaths::from_current_dir()?;
-    if !paths.manifest.exists() {
-        bail!("rivet.toml not found; run `rivet init` first");
-    }
-    let mut manifest = Manifest::read_from(&paths.manifest)
-        .with_context(|| format!("read {}", paths.manifest.display()))?;
+    let _guard = ProjectLock::acquire(&paths.root)?;
+    let mut project = Project::read(&paths.root)?;
     let (name, version) = parse_dependency(&package);
-
-    if flags.dry_run || flags.plan {
-        emit(
-            flags.output_mode(),
-            "Rivet Add Plan",
-            vec![format!("Add dependency: {name} = {version}")],
-            Event::new("plan.created")
-                .with("command", "add")
-                .with("package", name.clone()),
-            json!({"changed": false, "dependency": name, "version": version}),
-        )?;
-        return Ok(());
+    project.add(&name, &version, false)?;
+    let changed = !(flags.dry_run || flags.plan);
+    if changed {
+        project.save()?;
     }
-
-    manifest.dependencies.insert(name.clone(), version.clone());
-    manifest.write_to(&paths.manifest)?;
-
     emit(
         flags.output_mode(),
         "Rivet Add",
         vec![
-            format!("Project: {}", manifest.package.name),
-            format!("Added: {name}@{version}"),
-            "Run `rivet install` to resolve, verify and lock the dependency tree.".to_string(),
+            format!("{name}@{version}"),
+            "Run rivet install to resolve and install.".into(),
         ],
-        Event::new("dependency.resolved")
-            .with("name", name.clone())
-            .with("version", version.clone()),
-        json!({"changed": true, "dependency": name, "version": version}),
+        Event::new(if changed {
+            "manifest.updated"
+        } else {
+            "plan.created"
+        })
+        .with("dependency", &name),
+        json!({"changed": changed, "dependency": name, "version": version}),
     )
 }
 
-fn parse_dependency(spec: &str) -> (String, String) {
+pub(crate) fn parse_dependency(spec: &str) -> (String, String) {
     let spec = spec.strip_prefix("npm:").unwrap_or(spec);
     let (name, version) = split_name_version(spec);
     (name, version.unwrap_or_else(|| "latest".to_string()))

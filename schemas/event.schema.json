@@ -3,10 +3,10 @@
   "$id": "https://schemas.rivet.dev/event.schema.json",
   "title": "Rivet CLI Event",
   "type": "object",
-  "required": ["event"],
+  "required": ["schema_version", "event"],
   "properties": {
+    "schema_version": {"const": 1},
     "event": { "type": "string" }
   },
   "additionalProperties": true
 }
-

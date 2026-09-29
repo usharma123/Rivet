@@ -6,6 +6,7 @@ use crate::core::{
     manifest::{Manifest, PackageSection, PolicySection},
     output::{emit, Event},
     paths::ProjectPaths,
+    project::{atomic_write, Project, ProjectLock},
     registry_client::RegistryClient,
     store::LocalStore,
 };
@@ -13,6 +14,25 @@ use crate::CommonFlags;
 
 pub fn run(flags: CommonFlags) -> Result<()> {
     let paths = ProjectPaths::from_current_dir()?;
+    let _guard = ProjectLock::acquire(&paths.root)?;
+    if paths.root.join("package.json").exists() {
+        let project = Project::read(&paths.root)?;
+        let changed = !(paths.manifest.exists() || flags.plan || flags.dry_run);
+        if changed {
+            atomic_write(&paths.manifest, b"[policy]\nmin_release_age_hours = 72\n")?;
+        }
+        return emit(
+            flags.output_mode(),
+            "Rivet Init",
+            vec!["Use package.json for dependencies and scripts; rivet.toml holds policy.".into()],
+            Event::new(if changed {
+                "manifest.updated"
+            } else {
+                "plan.created"
+            }),
+            json!({"created": changed, "manifest": project.path, "policy": paths.manifest}),
+        );
+    }
     let name = paths
         .root
         .file_name()
@@ -60,7 +80,7 @@ pub fn run(flags: CommonFlags) -> Result<()> {
     store.ensure()?;
     let gitignore = paths.root.join(".gitignore");
     if !gitignore.exists() {
-        std::fs::write(&gitignore, "node_modules/\n")?;
+        std::fs::write(&gitignore, "node_modules/\n.rivet/\n")?;
     }
 
     emit(

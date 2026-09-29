@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rivet.dev/cli-result.schema.json",
+  "title": "Rivet CLI result",
+  "type": "object",
+  "required": ["schema_version", "ok"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "ok": {"type": "boolean"},
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable", "suggestion"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "retryable": {"type": "boolean"},
+        "suggestion": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "if": {"properties": {"ok": {"const": false}}},
+  "then": {"required": ["error"]},
+  "additionalProperties": true
+}
