@@ -1,6 +1,11 @@
 """Guard against silently weakened workflows while dependency updates evolve them."""
 from pathlib import Path
 import re
+import json
+import os
+import subprocess
+import sys
+import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,8 +33,24 @@ class WorkflowContract(unittest.TestCase):
         gate = source.split('\n  required:', 1)[1]
         needs = re.search(r'needs: \[([^\]]+)\]', gate).group(1)
         self.assertEqual(set(x.strip() for x in needs.split(',')), jobs - {'required'})
-        self.assertIn('if: always()', gate)
+        self.assertIn('if: ${{ !cancelled() }}', gate)
         self.assertIn("job['result'] != 'success'", gate)
+
+    def test_required_gate_rejects_every_unsuccessful_dependency(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text()
+        gate = source.split('\n  required:', 1)[1]
+        script = textwrap.dedent(gate.split("python3 - <<'PYCODE'\n", 1)[1]
+                                 .split('          PYCODE', 1)[0])
+        for result in ('success', 'failure', 'cancelled', 'skipped'):
+            with self.subTest(result=result):
+                env = dict(os.environ, RESULTS=json.dumps({
+                    'workspace': {'result': 'success'},
+                    'product': {'result': result},
+                }))
+                run = subprocess.run([sys.executable, '-c', script], env=env,
+                                     capture_output=True, text=True)
+                self.assertEqual(run.returncode == 0, result == 'success',
+                                 run.stdout + run.stderr)
 
     def test_local_linux_image_uses_the_registry_toolchain(self):
         version = re.search(r'^go (\S+)$', (ROOT / 'registry/go.mod').read_text(), re.M).group(1)
