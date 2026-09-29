@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::core::{
-    output::{emit_many, Event},
+    output::{emit_many, progress, Event, OutputMode},
     registry_client::RegistryClient,
 };
 use crate::CommonFlags;
@@ -65,9 +65,13 @@ fn change_state(
                 format!("Package: {name}@{version}"),
                 format!("Reason: {reason}"),
             ],
-            vec![Event::new(release_event(action))
-                .with("package", name.clone())
-                .with("version", version.clone())],
+            vec![Event::new(if flags.dry_run || flags.plan {
+                "plan.created"
+            } else {
+                "release.started"
+            })
+            .with("package", name.clone())
+            .with("version", version.clone())],
             &planned,
         )?;
     }
@@ -78,13 +82,20 @@ fn change_state(
     let registry = RegistryClient::from_env()?;
     let response = registry.package_action(&name, &version, action, &request)?;
     if flags.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "request": planned,
-                "registry_response": response,
-            }))?
-        );
+        emit_many(
+            flags.output_mode(),
+            "Rivet Release",
+            vec![],
+            vec![],
+            json!({"request": planned, "registry_response": response}),
+        )?;
+    } else if flags.output_mode() == OutputMode::Events {
+        progress(
+            flags.output_mode(),
+            Event::new(release_event(action))
+                .with("package", name)
+                .with("version", version),
+        )?;
     }
     Ok(())
 }

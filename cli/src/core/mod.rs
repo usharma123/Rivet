@@ -1,6 +1,7 @@
 pub mod artifact;
 pub mod attestation;
 pub mod byok;
+pub mod error;
 pub mod installed;
 pub mod linker;
 pub mod lockfile;
@@ -8,6 +9,7 @@ pub mod manifest;
 pub mod output;
 pub mod paths;
 pub mod policy;
+pub mod project;
 pub mod registry_client;
 pub mod resolver;
 pub mod risk;

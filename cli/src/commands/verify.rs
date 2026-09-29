@@ -1,13 +1,13 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use serde_json::json;
 
 use crate::commands::{import::describe, inspect::find_statement_with_freshness, run::locate};
 use crate::core::{
     installed::Verifier,
     linker,
-    manifest::Manifest,
     output::{emit_many, Event},
     policy::Policy,
+    project::Project,
     resolver::split_name_version,
     session::Session,
 };
@@ -63,12 +63,7 @@ pub fn run(target: String, reaudit: bool, flags: CommonFlags) -> Result<()> {
         None
     };
     let project_manifest = if project_package.is_some() && located.is_none() {
-        let path = project_root.join("rivet.toml");
-        if path.exists() {
-            Some(Manifest::read_from(&path).with_context(|| format!("read {}", path.display()))?)
-        } else {
-            None
-        }
+        Some(Project::read(&project_root)?.manifest)
     } else {
         None
     };

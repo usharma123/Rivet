@@ -1,6 +1,9 @@
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
+use std::io::{self, Write};
+
+pub const SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
@@ -11,6 +14,7 @@ pub enum OutputMode {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Event {
+    schema_version: u8,
     event: String,
     #[serde(flatten)]
     payload: serde_json::Map<String, Value>,
@@ -19,6 +23,7 @@ pub struct Event {
 impl Event {
     pub fn new(event: impl Into<String>) -> Self {
         Self {
+            schema_version: SCHEMA_VERSION,
             event: event.into(),
             payload: serde_json::Map::new(),
         }
@@ -31,6 +36,32 @@ impl Event {
         );
         self
     }
+}
+
+/// Flush each event as it happens so piped agents can observe a long install.
+pub fn progress(mode: OutputMode, event: Event) -> Result<()> {
+    if mode == OutputMode::Events {
+        let mut out = io::stdout().lock();
+        serde_json::to_writer(&mut out, &event)?;
+        writeln!(out)?;
+        out.flush()?;
+    }
+    Ok(())
+}
+
+pub fn failure(mode: OutputMode, error: &super::error::Failure) -> Result<()> {
+    match mode {
+        OutputMode::Human => eprintln!(
+            "error [{}]: {}\n{}",
+            error.code, error.message, error.suggestion
+        ),
+        OutputMode::Json => println!(
+            "{}",
+            serde_json::json!({"schema_version": SCHEMA_VERSION, "ok": false, "error": error})
+        ),
+        OutputMode::Events => progress(mode, Event::new("command.failed").with("error", error))?,
+    }
+    Ok(())
 }
 
 pub fn emit(
@@ -58,11 +89,16 @@ pub fn emit_many(
             }
         }
         OutputMode::Json => {
+            let mut value = serde_json::to_value(value)?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert("schema_version".into(), SCHEMA_VERSION.into());
+                object.insert("ok".into(), true.into());
+            }
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
         OutputMode::Events => {
             for event in events {
-                println!("{}", serde_json::to_string(&event)?);
+                progress(mode, event)?;
             }
         }
     }

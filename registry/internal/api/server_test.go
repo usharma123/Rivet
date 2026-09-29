@@ -33,6 +33,30 @@ const (
 
 var testNow = time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 
+func TestMachineErrorCodesDistinguishPolicyAndIntegrity(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{registry.ErrPolicy, http.StatusForbidden, "POLICY_REFUSED"},
+		{npm.ErrIntegrity, http.StatusBadGateway, "INTEGRITY_FAILED"},
+		{registry.ErrNotFound, http.StatusNotFound, "PACKAGE_NOT_FOUND"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			writeStoreResultWithDetail(w, fmt.Errorf("context: %w", tc.err), nil)
+			var result map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != tc.status || result["code"] != tc.code {
+				t.Fatalf("status=%d result=%v", w.Code, result)
+			}
+		})
+	}
+}
+
 // fakeNPM serves a packument and tarballs the way registry.npmjs.org does.
 type fakeNPM struct {
 	server   *httptest.Server

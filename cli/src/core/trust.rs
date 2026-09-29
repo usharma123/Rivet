@@ -3,7 +3,7 @@
 //! pins it explicitly. A later key change is a hard failure until the user
 //! runs `rivet trust reset`.
 
-use std::{fs, path::PathBuf};
+use std::{fs, os::fd::AsRawFd, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,7 @@ pub fn read_pin(registry: &str) -> Result<Option<PinnedRegistry>> {
 }
 
 pub fn reset_pin(registry: &str) -> Result<bool> {
+    let _guard = lock_pin(registry)?;
     let path = pin_path(registry)?;
     if path.exists() {
         fs::remove_file(path)?;
@@ -55,6 +56,7 @@ pub fn reset_pin(registry: &str) -> Result<bool> {
 /// Returns the key every attestation from `client` must be signed with.
 pub fn trusted_key(client: &RegistryClient) -> Result<TrustedKey> {
     let registry = client.base_url().to_string();
+    let _guard = lock_pin(&registry)?;
     let explicit = std::env::var("RIVET_REGISTRY_PUBKEY")
         .ok()
         .filter(|v| !v.is_empty());
@@ -97,10 +99,26 @@ pub fn trusted_key(client: &RegistryClient) -> Result<TrustedKey> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&path, serde_json::to_string_pretty(&pin)?)?;
+    super::project::atomic_write(&path, &serde_json::to_vec_pretty(&pin)?)?;
     eprintln!(
         "rivet: pinned signing key {} for {registry} (trust on first use; set RIVET_REGISTRY_PUBKEY to pin explicitly)",
         key.keyid
     );
     Ok(key)
+}
+
+fn lock_pin(registry: &str) -> Result<fs::File> {
+    let path = pin_path(registry)?.with_extension("lock");
+    fs::create_dir_all(path.parent().context("pin directory")?)?;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(path)?;
+    // SAFETY: file owns the descriptor and releases the lock when dropped.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return Err(std::io::Error::last_os_error()).context("lock registry trust pin");
+    }
+    Ok(file)
 }

@@ -5,6 +5,7 @@ use reqwest::blocking::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 
 use super::attestation::{Envelope, TrustedKey};
+use super::error::Failure;
 
 const MAX_ARTIFACT_BYTES: u64 = 256 << 20;
 
@@ -62,7 +63,11 @@ impl RegistryClient {
 
     pub fn require_token(&self) -> Result<()> {
         if self.token.is_none() {
-            bail!("RIVET_REGISTRY_TOKEN is required for this registry operation");
+            bail!(Failure::new(
+                "AUTH_REQUIRED",
+                "RIVET_REGISTRY_TOKEN is required for this registry operation",
+                "Configure a registry token with the required permissions."
+            ));
         }
         Ok(())
     }
@@ -157,7 +162,7 @@ impl RegistryClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().unwrap_or_default();
-            bail!("artifact upload failed ({status}): {body}");
+            bail!(Failure::http(status, body));
         }
         Ok(())
     }
@@ -198,12 +203,7 @@ impl RegistryClient {
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or_else(|_| serde_json::json!({}));
         if !status.is_success() {
-            let message = value
-                .get("error")
-                .and_then(serde_json::Value::as_str)
-                .map(ToString::to_string)
-                .unwrap_or_else(|| value.to_string());
-            bail!("registry request failed ({status}): {message}");
+            bail!(Failure::registry(status, &value));
         }
         Ok(value)
     }
@@ -218,12 +218,7 @@ impl RegistryClient {
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or_else(|_| serde_json::json!({}));
         if !status.is_success() {
-            let message = value
-                .get("error")
-                .and_then(serde_json::Value::as_str)
-                .map(ToString::to_string)
-                .unwrap_or_else(|| value.to_string());
-            bail!("registry request failed ({status}): {message}");
+            bail!(Failure::registry(status, &value));
         }
         Ok(value)
     }

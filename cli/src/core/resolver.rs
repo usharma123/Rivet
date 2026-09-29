@@ -13,13 +13,14 @@ use time::OffsetDateTime;
 
 use super::{
     attestation::{Envelope, Statement, TrustedKey},
+    error::Failure,
     lockfile::{LockVariant, LockedPackage, LockedRoot, Lockfile, TARGETS},
-    policy::{Policy, Refusal},
+    policy::Policy,
     registry_client::RegistryClient,
 };
 
 const WORKERS: usize = 8;
-type ResolveMemo = HashMap<(String, String), std::result::Result<(Statement, Envelope), String>>;
+type ResolveMemo = HashMap<(String, String), std::result::Result<(Statement, Envelope), Failure>>;
 
 #[derive(Debug)]
 struct TargetUnsupported(String);
@@ -304,10 +305,13 @@ impl Resolver<'_> {
 
             for request in batch {
                 let key = (request.name.clone(), request.spec.clone());
-                let outcome = memo
-                    .get(&key)
-                    .cloned()
-                    .unwrap_or_else(|| Err("not resolved".into()));
+                let outcome = memo.get(&key).cloned().unwrap_or_else(|| {
+                    Err(Failure::new(
+                        "RESOLUTION_FAILED",
+                        "not resolved",
+                        "Retry resolution.",
+                    ))
+                });
                 let id = match outcome {
                     Ok((statement, envelope)) => {
                         let id = statement.id();
@@ -315,20 +319,17 @@ impl Resolver<'_> {
                             let warnings = self
                                 .policy
                                 .check(&statement, self.is_locked(&id))
-                                .map_err(|e| {
-                                    if e.downcast_ref::<Refusal>().is_some() {
-                                        format!("refused: {e}")
-                                    } else {
-                                        e.to_string()
-                                    }
-                                });
+                                .map_err(|e| Failure::from_error(&e));
                             match warnings {
                                 Ok(warnings) => graph.warnings.extend(warnings),
                                 Err(error) if request.kind == Kind::Optional => {
                                     graph.notes.push(format!("skipped optional {id}: {error}"));
                                     continue;
                                 }
-                                Err(error) => bail!("cannot install {id}: {error}"),
+                                Err(error) => {
+                                    return Err(anyhow!(error))
+                                        .with_context(|| format!("cannot install {id}"))
+                                }
                             }
                             graph.nodes.insert(
                                 id.clone(),
@@ -356,11 +357,9 @@ impl Resolver<'_> {
                             .as_deref()
                             .map(|p| format!(" (required by {p})"))
                             .unwrap_or_default();
-                        bail!(
-                            "cannot install {}@{}{via}: {error}",
-                            request.name,
-                            request.spec
-                        );
+                        return Err(anyhow!(error)).with_context(|| {
+                            format!("cannot install {}@{}{via}", request.name, request.spec)
+                        });
                     }
                 };
                 let manifest = graph.nodes[&id].statement.manifest.clone();
@@ -557,7 +556,7 @@ impl Resolver<'_> {
         now: OffsetDateTime,
     ) -> Vec<(
         (String, String),
-        std::result::Result<(Statement, Envelope), String>,
+        std::result::Result<(Statement, Envelope), Failure>,
     )> {
         let results = Mutex::new(Vec::new());
         let work = Mutex::new(wanted.into_iter());
@@ -570,7 +569,7 @@ impl Resolver<'_> {
                     };
                     let outcome = self
                         .fetch_one(&name, &spec, &prefer, now)
-                        .map_err(|e| format!("{e:#}"));
+                        .map_err(|e| Failure::from_error(&e));
                     results
                         .lock()
                         .expect("results")

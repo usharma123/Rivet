@@ -11,6 +11,10 @@ cli_commands = [
   "init",
   "add",
   "install",
+  "ci",
+  "remove",
+  "update",
+  "exec",
   "import",
   "inspect",
   "run",
@@ -26,6 +30,7 @@ cli_commands = [
 ]
 schema_files = [
   "schemas/event.schema.json",
+  "schemas/cli-result.schema.json",
   "schemas/rivet-attestation.schema.json",
   "schemas/rivet-lock.schema.json",
   "schemas/rivet-manifest.schema.json",
@@ -90,6 +95,7 @@ paths = [
   "docs/adr/**",
   "docs/security-review.md",
   "docs/verification-compatibility-work.md",
+  "docs/agent-cli.md",
   ".github/**",
   "Makefile",
   "README.md",
@@ -104,7 +110,9 @@ owners = ["rivet-core"]
 release_group = "cli"
 public_interfaces = [
   "rivet command surface",
-  "rivet.toml project manifest and [policy] behavior",
+  "rivet.toml legacy manifest and [policy] behavior",
+  "package.json single-package project dependencies and scripts",
+  "versioned CLI JSON results and streamed events",
   "rivet.lock v3 portable target graphs and contextual peer bindings",
   "local content-addressed store layout",
   "node_modules virtual-store layout and .bin shims",
@@ -112,8 +120,8 @@ public_interfaces = [
   "run-time sandbox (seatbelt / bubblewrap)",
 ]
 validation_commands = ["make cli-test", "make cli-clippy", "make cli-fmt-check"]
-docs = ["README.md", "docs/adr/0004-lockfile-resolver-policy.md", "docs/adr/0007-signed-attestations-and-runtime-sandbox.md", "docs/security-review.md", "docs/verification-compatibility-work.md"]
-schemas = ["schemas/rivet-manifest.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-attestation.schema.json", "schemas/event.schema.json"]
+docs = ["README.md", "docs/agent-cli.md", "docs/adr/0008-local-first-agent-cli.md", "docs/adr/0004-lockfile-resolver-policy.md", "docs/adr/0007-signed-attestations-and-runtime-sandbox.md", "docs/security-review.md", "docs/verification-compatibility-work.md"]
+schemas = ["schemas/rivet-manifest.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-attestation.schema.json", "schemas/event.schema.json", "schemas/cli-result.schema.json"]
 
 [[components]]
 id = "registry"
@@ -157,13 +165,14 @@ owners = ["rivet-core"]
 release_group = "schemas"
 public_interfaces = [
   "event.schema.json",
+  "cli-result.schema.json",
   "rivet-attestation.schema.json",
   "rivet-lock.schema.json",
   "rivet-manifest.schema.json",
 ]
 validation_commands = ["make schema-check"]
 docs = ["README.md"]
-schemas = ["schemas/event.schema.json", "schemas/rivet-attestation.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-manifest.schema.json"]
+schemas = ["schemas/event.schema.json", "schemas/cli-result.schema.json", "schemas/rivet-attestation.schema.json", "schemas/rivet-lock.schema.json", "schemas/rivet-manifest.schema.json"]
 
 [[components]]
 id = "examples"

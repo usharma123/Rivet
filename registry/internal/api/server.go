@@ -687,19 +687,25 @@ func writeStoreResult(w http.ResponseWriter, value any, err error) {
 
 func writeStoreResultWithDetail(w http.ResponseWriter, err error, detail map[string]any) {
 	status := http.StatusInternalServerError
+	code := "REGISTRY_UNAVAILABLE"
 	switch {
 	case errors.Is(err, registry.ErrNotFound):
 		status = http.StatusNotFound
+		code = "PACKAGE_NOT_FOUND"
 	case errors.Is(err, registry.ErrPolicy):
 		status = http.StatusForbidden
+		code = "POLICY_REFUSED"
 	case errors.Is(err, registry.ErrInvalidRequest):
 		status = http.StatusBadRequest
+		code = "INVALID_REQUEST"
 	case errors.Is(err, registry.ErrConflict):
 		status = http.StatusConflict
+		code = "REGISTRY_CONFLICT"
 	case errors.Is(err, npm.ErrIntegrity):
 		status = http.StatusBadGateway
+		code = "INTEGRITY_FAILED"
 	}
-	body := map[string]any{"error": err.Error()}
+	body := map[string]any{"error": err.Error(), "code": code}
 	for key, value := range detail {
 		body[key] = value
 	}
