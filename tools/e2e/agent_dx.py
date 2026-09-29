@@ -11,17 +11,21 @@ def run_agent_cases(base, rivet, env, proxy):
     document = {"name": "agent-project", "private": True, "type": "module",
                 "dependencies": {"compat-core": "^1"},
                 "devDependencies": {"prettier": "3.5.3"},
-                "scripts": {"format": "prettier input.js", "fail": "node -e 'process.exit(7)'",
+                "scripts": {"format": "prettier input.js",
+                            "explicit": "./node_modules/.bin/prettier input.js",
+                            "explicit-args": "./node_modules/.bin/prettier",
+                            "hold": "node hold.cjs", "fail": "node -e 'process.exit(7)'",
                             "prettier": "node -e 'console.log(\"project-script\")'",
                             "args": "node args.cjs", "protect": "node protect.cjs"},
                 "custom": {"preserve": True}}
     manifest = project / "package.json"
     manifest.write_text(json.dumps(document, indent=2) + "\n")
     (project / "input.js").write_text("const   x={n:1}\n")
+    (project / "hold.cjs").write_text("console.log('ready');setTimeout(()=>{},3000)")
     (project / "args.cjs").write_text("console.log(JSON.stringify(process.argv.slice(2)))")
     (project / "protect.cjs").write_text("""
 const fs = require('fs');
-for (const p of ['package.json', 'rivet.toml', 'rivet.lock', 'node_modules/.bin/prettier']) {
+for (const p of [process.env.RIVET_SCRIPT_BINS + '/prettier', 'package.json', 'rivet.toml', 'rivet.lock', 'node_modules/.bin/prettier']) {
   try { fs.writeFileSync(p, 'corrupt'); throw new Error('write unexpectedly allowed: ' + p); }
   catch (e) { if (!['EPERM','EACCES','EROFS'].includes(e.code)) throw e; }
 }
@@ -84,6 +88,11 @@ console.log('protected');
 
         output = run(["run", "--json", "format"])
         assert json.loads(output.stdout)["exit_code"] == 0 and "const x = { n: 1 };" in output.stderr
+        output = run(["run", "--json", "explicit"])
+        assert json.loads(output.stdout)["exit_code"] == 0 and "const x = { n: 1 };" in output.stderr
+        assert run(["run", "explicit-args", "--", "--version"]).stdout.strip() == "3.5.3"
+        output = run(["run", "explicit-args", "--", "missing-input.js"], expected=2)
+        assert "No files matching" in output.stderr
         output = run(["run", "--json", "fail"], expected=7)
         assert json.loads(output.stdout)["error"]["code"] == "PROCESS_FAILED"
         assert "project-script" in run(["run", "prettier"]).stdout
@@ -96,6 +105,35 @@ console.log('protected');
         assert "protected" in run(["run", "--allow-write", str(project), "protect"]).stdout
         unchanged(saved)
         checks.append("sandboxed scripts binary collision argument quoting and machine output")
+        # A script keeps the mutation lock for its entire lifetime.
+        child = subprocess.Popen([str(rivet), "run", "hold"], cwd=project, env=env,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ)
+                assert selector.select(timeout=30), "script did not start"
+            assert child.stdout.readline().strip() == "ready"
+            value, _ = machine(["add", "compat-core", "--plan"], expected=1)
+            assert value["error"]["code"] == "PROJECT_BUSY"
+            stdout, stderr = child.communicate(timeout=30)
+            assert child.returncode == 0, (stdout, stderr)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.communicate()
+        # Explicit shims must still be preceded by full tree verification.
+        entry = project / "node_modules/prettier/bin/prettier.cjs"
+        original_entry = entry.read_bytes()
+        mode = entry.stat().st_mode
+        entry.chmod(0o644)
+        try:
+            entry.write_bytes(original_entry + b"\n// changed\n")
+            output = run(["run", "explicit-args", "--", "--version"], expected=1)
+            assert "3.5.3" not in output.stdout
+        finally:
+            entry.write_bytes(original_entry)
+            entry.chmod(mode)
+        checks.append("explicit shims preserve arguments exit status verification sandbox and locking")
 
         lock = (project / "rivet.lock").read_bytes()
         proxy.phase = "agent-frozen"
