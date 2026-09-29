@@ -182,6 +182,15 @@ impl LocalStore {
             self.cached_attestation(&statement.name, &statement.version, key)?
         {
             if existing.issued_at()? > statement.issued_at()? {
+                // Concurrent requests can return equivalent refreshes out of
+                // order. Keep the newer envelope only if it covers the older
+                // validity window and every release/policy field is identical.
+                let mut same_release = existing.clone();
+                same_release.issued_at.clone_from(&statement.issued_at);
+                same_release.expires_at.clone_from(&statement.expires_at);
+                if same_release == *statement && existing.expires_at()? >= statement.expires_at()? {
+                    return Ok(());
+                }
                 bail!(
                     "attestation rollback for {}: a newer statement is cached",
                     statement.id()
@@ -392,6 +401,68 @@ mod tests {
         assert!(store
             .cache_attestation(&swapped, &seal(&signing, &key.keyid, &swapped), &key)
             .is_err());
+    }
+
+    #[test]
+    fn out_of_order_equivalent_refresh_keeps_newer_envelope() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(dir.path());
+        let (signing, key) = test_key();
+        let older = sample_statement("demo", "1.0.0");
+        let mut newer = older.clone();
+        newer.issued_at = "2026-09-26T00:00:00Z".into();
+        newer.expires_at = "2026-10-03T00:00:00Z".into();
+        let newer_envelope = seal(&signing, &key.keyid, &newer);
+        store
+            .cache_attestation(&newer, &newer_envelope, &key)
+            .unwrap();
+        store
+            .cache_attestation(&older, &seal(&signing, &key.keyid, &older), &key)
+            .unwrap();
+        assert_eq!(
+            store
+                .cached_attestation("demo", "1.0.0", &key)
+                .unwrap()
+                .unwrap(),
+            (newer, newer_envelope)
+        );
+    }
+
+    #[test]
+    fn older_refresh_cannot_change_release_fields_or_extend_validity() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(dir.path());
+        let (signing, key) = test_key();
+        let older = sample_statement("demo", "1.0.0");
+        let mut newer = older.clone();
+        newer.issued_at = "2026-09-26T00:00:00Z".into();
+        store
+            .cache_attestation(&newer, &seal(&signing, &key.keyid, &newer), &key)
+            .unwrap();
+        let mut changed_manifest = older.clone();
+        changed_manifest
+            .manifest
+            .dependencies
+            .insert("other".into(), "1".into());
+        let mut changed_audit = older.clone();
+        changed_audit.audit = None;
+        let mut extended = older.clone();
+        extended.expires_at = "2026-10-03T00:00:00Z".into();
+        let mut changed_artifact = older;
+        changed_artifact.artifact.hash = "sha512-other".into();
+        for changed in [changed_manifest, changed_audit, extended, changed_artifact] {
+            assert!(store
+                .cache_attestation(&changed, &seal(&signing, &key.keyid, &changed), &key)
+                .is_err());
+        }
+        assert_eq!(
+            store
+                .cached_attestation("demo", "1.0.0", &key)
+                .unwrap()
+                .unwrap()
+                .0,
+            newer
+        );
     }
 
     #[test]
