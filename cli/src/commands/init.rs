@@ -21,6 +21,9 @@ pub fn run(flags: CommonFlags) -> Result<()> {
         if changed {
             atomic_write(&paths.manifest, b"[policy]\nmin_release_age_hours = 72\n")?;
         }
+        if !flags.plan && !flags.dry_run {
+            ensure_gitignore(&paths.root)?;
+        }
         return emit(
             flags.output_mode(),
             "Rivet Init",
@@ -78,10 +81,7 @@ pub fn run(flags: CommonFlags) -> Result<()> {
     }
     paths.ensure_metadata()?;
     store.ensure()?;
-    let gitignore = paths.root.join(".gitignore");
-    if !gitignore.exists() {
-        std::fs::write(&gitignore, "node_modules/\n.rivet/\n")?;
-    }
+    ensure_gitignore(&paths.root)?;
 
     emit(
         flags.output_mode(),
@@ -114,4 +114,59 @@ fn sanitize_package_name(name: &str) -> String {
             }
         })
         .collect()
+}
+
+fn ensure_gitignore(root: &std::path::Path) -> Result<()> {
+    let path = root.join(".gitignore");
+    let mut contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error).context("read .gitignore"),
+    };
+    let original_len = contents.len();
+    for entry in ["node_modules/", ".rivet/"] {
+        if !contents.lines().any(|line| line.trim() == entry) {
+            if !contents.is_empty() && !contents.ends_with('\n') {
+                contents.push('\n');
+            }
+            contents.push_str(entry);
+            contents.push('\n');
+        }
+    }
+    if contents.len() != original_len {
+        atomic_write(&path, contents.as_bytes())?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gitignore_preserves_user_entries_and_adds_missing_defaults_once() {
+        for initial in [None, Some("dist/"), Some("node_modules/\n# custom\n")] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join(".gitignore");
+            if let Some(initial) = initial {
+                std::fs::write(&path, initial).unwrap();
+            }
+            ensure_gitignore(root.path()).unwrap();
+            let contents = std::fs::read_to_string(&path).unwrap();
+            assert!(contents.starts_with(initial.unwrap_or("")));
+            assert_eq!(
+                contents
+                    .lines()
+                    .filter(|line| *line == "node_modules/")
+                    .count(),
+                1
+            );
+            assert_eq!(
+                contents.lines().filter(|line| *line == ".rivet/").count(),
+                1
+            );
+            ensure_gitignore(root.path()).unwrap();
+            assert_eq!(std::fs::read_to_string(path).unwrap(), contents);
+        }
+    }
 }
