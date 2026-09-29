@@ -309,8 +309,9 @@ fn run_script(root: &Path, name: &str, args: &[String], flags: &CommonFlags) -> 
         policy: &policy,
     }
     .verify(&root, &state)?;
-    // Never execute mutable .bin wrappers inside a sandbox: build direct entry
-    // wrappers from the verified receipt, with the entire installed tree checked.
+    // Both PATH commands and explicit .bin shims use these verified entries.
+    // Keep the wrappers read-only in the sandbox and the project lock held
+    // until the script exits, without starting a second verifier in the shim.
     let bins = tempfile::Builder::new()
         .prefix("rivet-script-bins-")
         .tempdir()?;
@@ -365,6 +366,8 @@ fn run_script(root: &Path, name: &str, args: &[String], flags: &CommonFlags) -> 
                     node.parent().context("node parent")?.display()
                 ),
             ),
+            ("RIVET_SCRIPT_PROJECT".into(), root.display().to_string()),
+            ("RIVET_SCRIPT_BINS".into(), bin_path.display().to_string()),
             ("npm_lifecycle_event".into(), name.into()),
             (
                 "npm_package_name".into(),

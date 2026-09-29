@@ -67,10 +67,14 @@ fn edits_preserve_unrelated_npm_fields_and_plan_preserves_bytes() {
 }
 
 #[test]
-fn init_existing_npm_project_creates_only_policy_and_does_not_replace_it() {
+fn init_existing_npm_project_preserves_policy_and_ignores_metadata() {
     let root = tempfile::tempdir().unwrap();
     fs::write(root.path().join("package.json"), "{\"name\":\"example\"}").unwrap();
     assert!(invoke(root.path(), &["init", "--json"]).status.success());
+    assert_eq!(
+        fs::read_to_string(root.path().join(".gitignore")).unwrap(),
+        "node_modules/\n.rivet/\n"
+    );
     let policy = root.path().join("rivet.toml");
     assert!(!fs::read_to_string(&policy).unwrap().contains("[package]"));
     fs::write(&policy, "[policy]\nrequire_provenance = true\n").unwrap();
@@ -132,4 +136,23 @@ fn failed_network_install_does_not_save_dependency_edit() {
     assert_eq!(fs::read_to_string(path).unwrap(), "{}");
     assert!(!root.path().join("rivet.lock").exists());
     assert!(!root.path().join("node_modules").exists());
+}
+
+#[test]
+fn npm_init_plan_and_dry_run_preserve_gitignore_and_policy() {
+    for flag in ["--plan", "--dry-run"] {
+        for existing in [None, Some("dist/")] {
+            let root = tempfile::tempdir().unwrap();
+            fs::write(root.path().join("package.json"), "{}").unwrap();
+            let ignore = root.path().join(".gitignore");
+            if let Some(contents) = existing {
+                fs::write(&ignore, contents).unwrap();
+            }
+            assert!(invoke(root.path(), &["init", flag, "--json"])
+                .status
+                .success());
+            assert_eq!(fs::read_to_string(ignore).ok().as_deref(), existing);
+            assert!(!root.path().join("rivet.toml").exists());
+        }
+    }
 }
